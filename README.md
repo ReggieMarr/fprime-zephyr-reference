@@ -24,6 +24,10 @@ pip install -r "fprime/requirements.txt"
 
 By default, the toolchain is set to `zephyr` in the `settings.ini` file. Don't change this.
 
+### Limitations
+
+Unfortunately, you can only build one deployment at a time. If you have multiple deployments in a project, comment out other deployments under `project.cmake` so that you build one at a time.
+
 ### Building Deployment
 ```sh
 fprime-util generate -DBOARD=teensy41

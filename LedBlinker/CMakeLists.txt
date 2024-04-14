@@ -7,6 +7,9 @@
 #
 #####
 
+# Deployment is only compatible with the Zephyr platform
+restrict_platforms(Zephyr)
+
 ###
 # Topology and Components
 ###

@@ -4,4 +4,4 @@
 	branch = devel
 [submodule "fprime-zephyr"]
 	path = fprime-zephyr
-	url = https://github.com/fprime-community/fprime-zephyr.git
+	url = https://github.com/ethancheez/fprime-zephyr.git
