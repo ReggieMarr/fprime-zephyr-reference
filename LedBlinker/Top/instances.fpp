@@ -58,7 +58,7 @@ module LedBlinker {
 
   instance deframer: Svc.Deframer base id 0x4800
 
-  # instance systemResources: Svc.SystemResources base id 0x4900
+  instance systemResources: Svc.SystemResources base id 0x4900
 
   instance gpioDriver: Zephyr.ZephyrGpioDriver base id 0x4C00
 
