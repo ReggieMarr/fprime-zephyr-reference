@@ -5,7 +5,6 @@
 // ======================================================================
 // Provides access to autocoded functions
 #include <LedBlinker/Top/LedBlinkerTopologyAc.hpp>
-#include <LedBlinker/Top/LedBlinkerPacketsAc.hpp>
 #include <config/FppConstantsAc.hpp>
 
 // Necessary project-specified types

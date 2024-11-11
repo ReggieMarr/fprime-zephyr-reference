@@ -7,10 +7,10 @@ manifest:
 
   remotes:
     - name: zephyrproject-rtos
-      url-base: https://github.com/zephyrproject-rtos
+      url-base: https://github.com/zephyrproject-rtos/zephyr
 
   projects:
     - name: zephyr
       remote: zephyrproject-rtos
-      revision: zephyr-v3.3.0
+      revision: v3.7.0
       import: true
