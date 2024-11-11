@@ -27,3 +27,6 @@ register_fprime_deployment()
 FILE(GLOB app_sources Main.cpp)
 target_sources(app PRIVATE ${app_sources})
 target_link_libraries(app PRIVATE LedBlinker_Top)
+add_dependencies(LedBlinker zephyr_final)
+
+set_target_properties(Svc_FatalHandler PROPERTIES EXCLUDE_FROM_ALL TRUE) # Temporary to fix bug in F Prime Release v3.5.0

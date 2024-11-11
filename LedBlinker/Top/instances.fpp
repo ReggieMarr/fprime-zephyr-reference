@@ -6,7 +6,7 @@ module LedBlinker {
 
   module Default {
     constant QUEUE_SIZE = 3
-    constant STACK_SIZE = 64 * 1024
+    constant STACK_SIZE = 16 * 1024
   }
 
   # ----------------------------------------------------------------------
@@ -46,7 +46,7 @@ module LedBlinker {
 
   instance fatalAdapter: Svc.AssertFatalAdapter base id 0x4200
 
-  instance fatalHandler: Svc.FatalHandler base id 0x4300
+  instance fatalHandler: Baremetal.FatalHandler base id 0x4300
 
   instance timeHandler: Zephyr.ZephyrTime base id 0x4400 \
 
