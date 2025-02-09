@@ -1,7 +1,7 @@
 manifest:
   version: 0.12
   self:
-    path: smoketest
+    path: .
   projects:
     - name: zephyr
       # This ensures west has access to zephyrs extensions
