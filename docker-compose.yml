@@ -1,0 +1,27 @@
+services:
+  zephyr:
+    image: $ZEPHYR_IMG
+    build:
+      context: .
+      dockerfile: Dockerfile
+    environment:
+      - TERM=xterm-256color
+      - FORCE_COLOR=1
+      - CMAKE_COLOR_DIAGNOSTICS=ON
+      - NINJA_COLOR=1
+    container_name: fprime-zephyr
+    network_mode: host
+    volumes:
+      - ./:$ZEPHYR_WDIR
+
+  zephyr-tty:
+      container_name: fprime-zephyr-tty
+      extends: zephyr
+      privileged: true
+      devices:
+        - "${HOST_DEVICE_PORT:-/dev/ttyACM0}:/dev/ttyACM0"
+        - "/dev/bus/usb:/dev/bus/usb"
+        - "/dev/usb:/dev/usb"
+      group_add:
+        - "dialout"
+        - "plugdev"
