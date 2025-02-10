@@ -7,51 +7,72 @@
 #
 #####
 
-# Deployment is only compatible with the Zephyr platform
 restrict_platforms(Zephyr)
 
-###
-# Topology and Components
-###
 add_fprime_subdirectory("${CMAKE_CURRENT_LIST_DIR}/Top/")
 
-# Add custom components to this specific deployment here
-# add_fprime_subdirectory("${CMAKE_CURRENT_LIST_DIR}/MyComponent/")
-
-
 set(SOURCE_FILES "${CMAKE_CURRENT_LIST_DIR}/Stub.cpp")
+# set(SOURCE_FILES "${CMAKE_CURRENT_LIST_DIR}/Launch.cpp")
 set(MOD_DEPS ${FPRIME_CURRENT_MODULE}/Top)
-
 register_fprime_deployment()
 
-# add_dependencies(ZephyrRef syscall_list)
-
-FILE(GLOB app_sources Main.cpp)
-target_sources(app PRIVATE ${app_sources})
-target_link_libraries(app PRIVATE LedBlinker_Top)
-# add_dependencies(LedBlinker zephyr_final)
-
-# # Step 2: Explicit Target for Syscall Generation
-# add_custom_target(generate_syscalls
-#     COMMAND ${CMAKE_COMMAND} --build ${CMAKE_BINARY_DIR} --target syscall_list
-#     COMMENT "Ensuring Zephyr syscalls are generated before F′ builds."
+# add_library(LedBlinker_Combined STATIC
+#     $<TARGET_OBJECTS:LedBlinker>  # Get objects from executable
+#     "${CMAKE_CURRENT_LIST_DIR}/Stub.cpp"
 # )
 
-# # Step 3: Make F′ Depend on the Syscall Generation
-# add_dependencies(generate_syscalls syscall_list)
-
-# # Step 4: Ensure F′ Waits for `generate_syscalls`
-# include_directories(
-#     ${ZEPHYR_BASE}/include
-#     ${CMAKE_BINARY_DIR}/zephyr/include/generated
+# target_link_libraries(LedBlinker_Combined
+#     PUBLIC
+#         LedBlinker_Top
+#         Os_Console_Zephyr
+#         Os_Task_Zephyr
+#         Os_Queue_Zephyr
+#         Os_Mutex_Zephyr
+#         Os_RawTime_Zephyr
+#         Os_Zephyr_Shared
 # )
-# add_custom_target(wait_for_syscalls
-#     COMMAND ${CMAKE_COMMAND} -E sleep 1  # Prevents race conditions
-#     DEPENDS ${CMAKE_BINARY_DIR}/zephyr/include/generated/zephyr/syscall_list.h
+
+# target_link_libraries(zephyr
+#     PUBLIC
+#         $<TARGET_OBJECTS:LedBlinker>  # Get objects from executable
+#         LedBlinker_Top
+#         Os_Console_Zephyr
+#         Os_Task_Zephyr
+#         Os_Queue_Zephyr
+#         Os_Mutex_Zephyr
+#         Os_RawTime_Zephyr
+#         Os_Zephyr_Shared
 # )
-# add_dependencies(LedBlinker generate_syscalls wait_for_syscalls)
 
-set(CMAKE_VERBOSE_MAKEFILE ON)
+target_sources(app PRIVATE
+    "${CMAKE_CURRENT_LIST_DIR}/Main.cpp"
+)
 
-# set_target_properties(Svc_FatalHandler PROPERTIES EXCLUDE_FROM_ALL TRUE) # Temporary to fix bug in F Prime Release v3.5.0
+target_link_directories(app PRIVATE
+    "${CMAKE_CURRENT_LIST_DIR}/Top/"
+)
 
+# FILE(GLOB app_sources Main.cpp)
+# target_sources(app PRIVATE ${app_sources})
+
+# target_link_libraries(app PRIVATE
+#     -Wl,--whole-archive
+#     LedBlinker_Combined
+#     -Wl,--no-whole-archive
+# )
+
+set_target_properties(Svc_FatalHandler PROPERTIES EXCLUDE_FROM_ALL TRUE)
+
+# target_link_libraries(app PRIVATE LedBlinker_Top)
+# target_link_libraries(LedBlinker_Top PRIVATE Os_Zephyr_Shared)
+# add_dependencies(zephyr_final
+#         $<TARGET_OBJECTS:LedBlinker>  # Get objects from executable
+#         LedBlinker_Top)
+
+target_link_libraries(LedBlinker_Top PRIVATE
+    -Wl,--whole-archive
+    zephyr
+    -Wl,--no-whole-archive
+)
+
+add_dependencies(LedBlinker zephyr_final)

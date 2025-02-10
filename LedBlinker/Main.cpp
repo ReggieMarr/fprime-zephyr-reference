@@ -4,30 +4,21 @@
 //
 // ======================================================================
 // Used to access topology functions
-#include <LedBlinker/Top/LedBlinkerTopologyAc.hpp>
-#include <LedBlinker/Top/LedBlinkerTopology.hpp>
-#include <Fw/Logger/Logger.hpp>
+#include <zephyr/kernel.h>
 
-const struct device *serial = DEVICE_DT_GET(DT_NODELABEL(cdc_acm_uart0));
+// const struct device *serial = DEVICE_DT_GET(DT_NODELABEL(cdc_acm_uart0));
+/* 1000 msec = 1 sec */
+#define SLEEP_TIME_MS   1000
+
+void __attribute__((weak, long_call)) run(void) {
+    k_msleep(SLEEP_TIME_MS);
+}
 
 int main()
 {
-    Os::init();
-    Fw::Logger::log("Program Started\n");
-
-    // Object for communicating state to the reference topology
-    LedBlinker::TopologyState inputs;
-    inputs.dev = serial;
-    inputs.uartBaud = 115200;
-
-    // Setup topology
-    LedBlinker::setupTopology(inputs);
-
-    while(true)
-    {
-        rateDriver.cycle();
-        k_usleep(1);
-    }
+	while (1) {
+        run();
+	}
 
     return 0;
 }

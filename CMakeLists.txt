@@ -6,35 +6,25 @@
 cmake_minimum_required(VERSION 3.20)
 cmake_policy(SET CMP0048 NEW)
 
+set(BOARD teensy41)
 find_package(Zephyr REQUIRED HINTS $ENV{ZEPHYR_BASE})
 
-###
-# F' Core Setup
-# This includes all of the F prime core components, and imports the make-system.
-###
-# set(FPRIME_SKIP_TOOLS_VERSION_CHECK ON)
-# set(FPRIME_FRAMEWORK_PATH "${CMAKE_CURRENT_LIST_DIR}/fprime" CACHE PATH "Location of F prime framework" FORCE)
-# set(FPRIME_PROJECT_ROOT "${CMAKE_CURRENT_LIST_DIR}" CACHE PATH "Root path of F prime project" FORCE)
-# NOTE: register custom targets between these two lines
-
-# set(SYSCALL_LIST_H "${CMAKE_BINARY_DIR}/zephyr/include/generated/zephyr/syscall_list.h")
-# set(PARSE_SYSCALLS_JSON "${CMAKE_BINARY_DIR}/misc/generated/syscalls.json")
-# set(PARSE_SYSCALLS_TARGET parse_syscalls)
-
-# # Step 3: Wait for `parse_syscalls.json`, ensuring it's generated first
-# add_custom_target(generate_syscalls
-#     COMMAND ${CMAKE_COMMAND} --build ${CMAKE_BINARY_DIR} --target ${PARSE_SYSCALLS_TARGET}
-#     COMMENT "Ensuring Zephyr syscall parsing completes before F′ builds."
-# )
-
-# add_custom_target(wait_for_syscalls
-#     COMMAND ${CMAKE_COMMAND} -E sleep 1
-#     DEPENDS ${PARSE_SYSCALLS_JSON} ${SYSCALL_LIST_H}
-# )
-
-# include("${FPRIME_FRAMEWORK_PATH}/cmake/FPrime-Code.cmake")
 project(fprime-zephyr-reference C CXX)
 
+set(FPRIME_ENABLE_FRAMEWORK_UTS OFF)
+set(FPRIME_ENABLE_AUTOCODER_UTS OFF)
+set(FPRIME_FRAMEWORK_PATH /fprime-zephyr-reference/fprime)
+set(FPRIME_PROJECT_ROOT /fprime-zephyr-reference)
+set(FPRIME_SETTINGS_FILE /fprime-zephyr-reference/settings.ini)
+set(FPRIME_ENVIRONMENT_FILE /fprime-zephyr-reference/settings.ini)
+set(FPRIME_CONFIG_DIR /fprime-zephyr-reference/config)
+set(FPRIME_INSTALL_DEST /fprime-zephyr-reference/build-artifacts)
+
+set(FPRIME_PLATFORM Zephyr)
+
+set(FPRIME_TOOLCHAIN zephyr)
+set(CMAKE_TOOLCHAIN_FILE /fprime-zephyr-reference/fprime-zephyr/cmake/toolchain/zephyr.cmake)
+set(FPRIME_LIBRARY_LOCATIONS /fprime-zephyr-reference/fprime-zephyr;/fprime-zephyr-reference/fprime-baremetal)
 
 set(CMAKE_VERBOSE_MAKEFILE ON)
 
@@ -44,7 +34,4 @@ fprime_setup_included_code()
 
 # This includes project-wide objects
 include("${CMAKE_CURRENT_LIST_DIR}/project.cmake")
-
-message(STATUS "OS Implementation Library: ${OS_IMPL_LIB}")
-message(STATUS "Link Libraries: ${TARGET_LINK_LIBRARIES}")
 
