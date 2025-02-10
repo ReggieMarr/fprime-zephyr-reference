@@ -4,6 +4,9 @@
 //
 // ======================================================================
 // Used to access topology functions
+#include <LedBlinker/Top/LedBlinkerTopologyAc.hpp>
+#include <LedBlinker/Top/LedBlinkerTopology.hpp>
+#include <Fw/Logger/Logger.hpp>
 #include <zephyr/kernel.h>
 
 // const struct device *serial = DEVICE_DT_GET(DT_NODELABEL(cdc_acm_uart0));
@@ -16,6 +19,7 @@ void __attribute__((weak, long_call)) run(void) {
 
 int main()
 {
+    Os::init();
 	while (1) {
         run();
 	}
