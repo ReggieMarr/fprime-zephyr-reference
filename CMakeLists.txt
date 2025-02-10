@@ -28,6 +28,18 @@ set(FPRIME_LIBRARY_LOCATIONS /fprime-zephyr-reference/fprime-zephyr;/fprime-zeph
 
 set(CMAKE_VERBOSE_MAKEFILE ON)
 
+add_compile_options(
+    -fno-exceptions
+    -fno-rtti
+    -fno-builtin
+)
+add_link_options(
+    -nostdlib
+    -Wl,--gc-sections
+    # Use only one of libstdc++ or libm, not both
+    -nodefaultlibs
+)
+
 include("${CMAKE_CURRENT_LIST_DIR}/fprime/cmake/FPrime.cmake")
 fprime_setup_included_code()
 

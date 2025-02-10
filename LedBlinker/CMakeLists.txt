@@ -47,9 +47,8 @@ register_fprime_deployment()
 target_sources(app PRIVATE
     "${CMAKE_CURRENT_LIST_DIR}/Main.cpp"
 )
-target_link_libraries(LedBlinker PRIVATE
-    -lstdc++           # C++ runtime
-    ${ZEPHYR_LINK_OPTIONS}
+
+target_link_libraries(app PRIVATE
     -Wl,--start-group
     -Wl,--whole-archive
     LedBlinker_Top
