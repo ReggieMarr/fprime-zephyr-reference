@@ -30,6 +30,7 @@ Unfortunately, you can only build one deployment at a time. If you have multiple
 
 ### Building Deployment
 ```sh
+fprime-util generate -DBOARD=sam_v71_xult -DBOARD_QUALIFIERS=/samv71q21b
 fprime-util generate -DBOARD=teensy41
 fprime-util build -j4
 ```
