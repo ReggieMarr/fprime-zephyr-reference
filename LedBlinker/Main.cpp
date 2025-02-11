@@ -38,27 +38,38 @@ static const struct gpio_dt_spec led1 = GPIO_DT_SPEC_GET(LED1_NODE, gpios);
 
 int main(void)
 {
-    gpio_pin_configure_dt(&led0, GPIO_OUTPUT_ACTIVE);
-    gpio_pin_configure_dt(&led1, GPIO_OUTPUT_ACTIVE);
-    gpio_pin_set_dt(&led0, 1);
-    gpio_pin_set_dt(&led1, 1);
-    // while(true)
-    // {
-    //     gpio_pin_toggle_dt(&led0);
-    //     gpio_pin_toggle_dt(&led1);
-    //     k_usleep(1200);
-    // }
+	int ret;
+	bool led_state = true;
+
 	if (!gpio_is_ready_dt(&led0)) {
 		return 0;
 	}
 
-	ret = gpio_pin_configure_dt(&led, GPIO_OUTPUT_ACTIVE);
+	ret = gpio_pin_configure_dt(&led0, GPIO_OUTPUT_ACTIVE);
 	if (ret < 0) {
 		return 0;
 	}
 
+    gpio_pin_configure_dt(&led1, GPIO_OUTPUT_ACTIVE);
+    gpio_pin_set_dt(&led1, 1);
+
+    Os::init();
+    Fw::Logger::log("Program Started\n");
+
+    // Object for communicating state to the reference topology
+    LedBlinker::TopologyState inputs;
+    inputs.dev = serial;
+    inputs.uartBaud = 115200;
+    // Setup topology
+    LedBlinker::setupTopology(inputs);
+        k_usleep(1000);
+
 	while (1) {
-		ret = gpio_pin_toggle_dt(&led);
+		ret = gpio_pin_toggle_dt(&led0);
+		if (ret < 0) {
+			return 0;
+		}
+		ret = gpio_pin_toggle_dt(&led1);
 		if (ret < 0) {
 			return 0;
 		}
@@ -67,20 +78,6 @@ int main(void)
 		printf("LED state: %s\n", led_state ? "ON" : "OFF");
 		k_msleep(SLEEP_TIME_MS);
 	}
-	return 0;
-
-    // Os::init();
-    // Fw::Logger::log("Program Started\n");
-
-
-    // // Object for communicating state to the reference topology
-    // LedBlinker::TopologyState inputs;
-    // inputs.dev = serial;
-    // inputs.uartBaud = 115200;
-
-    // // Setup topology
-    // LedBlinker::setupTopology(inputs);
-    //     k_usleep(1000);
 
     // while(true)
     // {

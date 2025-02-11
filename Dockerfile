@@ -33,8 +33,8 @@ RUN sudo chown user:dialout /dev/tty* || true
 # COPY ./deps/50-cmsis-dap.rules /etc/udev/rules.d/50-cmsis-dap.rules
 
 USER user
-RUN pipx install pyocd
-RUN pyocd pack install ATSAMV71Q21B
+# RUN pipx install pyocd
+# RUN pyocd pack install ATSAMV71Q21B
 
 # # Final layer with project setup
 # FROM mplab-setup AS project
@@ -91,9 +91,10 @@ FROM zephyr-setup AS cmsis-setup
 
 # install west and leverage that to install dependencies
 RUN pip install west
-# RUN west packages pip --install && west sdk install
 
 WORKDIR ${WDIR}
+
+RUN west packages pip --install && west sdk install
 
 ENV HOME=/home/user/
 

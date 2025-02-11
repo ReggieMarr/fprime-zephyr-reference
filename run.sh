@@ -207,6 +207,20 @@ build_zephyr_st() {
     update_build_env "${SCRIPT_DIR}/${zephyr_path}build"
 }
 
+build_ledblinker_st() {
+    zephyr_path="build"
+    flags="-w $ZEPHYR_WDIR/$zephyr_path $DEFAULT_FLAGS"
+
+    gen_cmd="cmake .. -GNinja -B /fprime-zephyr-reference/build -DBOARD=sam_v71_xult -DBOARD_QUALIFIERS=/samv71q21"
+    build_cmd="cmake --build /fprime-zephyr-reference/build --target zephyr_final -- -v"
+    cmd=$build_cmd
+    [ "$CLEAN" -eq 1 ] && cmd="rm ../build/* -rf && ${gen_cmd} && ${build_cmd}"
+
+    try_docker_exec "zephyr" "bash -c \"$cmd\"" "$flags"
+
+    update_build_env "${SCRIPT_DIR}/build"
+}
+
 case $1 in
   "format")
     if [[ "$2" == *.fpp ]]; then
@@ -267,23 +281,11 @@ EOF
     [ -z "$EXEC_TARGET" ] && { echo "Error: must specify target to exec"; exit 1; }
 
     case $EXEC_TARGET in
-      "Base")
-        cmd="cmake -DENABLE_DEBUGGING=ON -DHOST_PATH=${SCRIPT_DIR} .. && make"
-        [ "$CLEAN" -eq 1 ] && cmd="rm -rf ../build/* && $cmd"
-
-        flags="-w $ZEPHYR_BASE_DIR/build $DEFAULT_FLAGS"
-
-        run_docker_compose $cmd --service="zephyr" -- $flags
-
-        MOD_DICT_CMD="sed -i \"s|${ZEPHYR_WDIR}|${SCRIPT_DIR}|g\" \"${SCRIPT_DIR}/Base/build/compile_commands.json\""
-
-        exec_cmd "$MOD_DICT_CMD"
-      ;;
       "zephyr-st")
         build_zephyr_st
       ;;
-      "cmsis-st")
-        build_cmsis_st
+      "LedBlinker")
+        build_ledblinker_st
       ;;
       "docker")
         build_docker
