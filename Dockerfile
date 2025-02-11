@@ -92,9 +92,13 @@ FROM zephyr-setup AS cmsis-setup
 # install west and leverage that to install dependencies
 RUN pip install west
 
-WORKDIR ${WDIR}
+WORKDIR ${WDIR}/LedBlinker
 
-RUN west packages pip --install && west sdk install
+RUN echo "Initialize west"
+RUN west init -l
+RUN west update
+RUN west packages pip --install
+RUN west sdk install
 
 ENV HOME=/home/user/
 
