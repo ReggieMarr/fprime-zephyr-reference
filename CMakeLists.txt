@@ -6,7 +6,10 @@
 cmake_minimum_required(VERSION 3.20)
 cmake_policy(SET CMP0048 NEW)
 
-set(BOARD teensy41)
+# set(BOARD teensy41)
+# set(BOARD_QUALIFIERS /mimxrt1062)
+# set(BOARD "sam_v71_xult")
+# set(BOARD_QUALIFIERS "samv71q21b")
 find_package(Zephyr REQUIRED HINTS $ENV{ZEPHYR_BASE})
 
 project(fprime-zephyr-reference C CXX)

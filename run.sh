@@ -308,7 +308,7 @@ EOF
         # Stands for cmsis smoketest
         bin_path="./fprime-cmsis/cmake/toolchain/support/sources/zephyrv71q21b/out/blinky/ZephyrV71-Xplained-Board/Debug/blinky.elf"
         debug_cmd="pyocd gdbserver --elf ${bin_path} -t atzephyrv71q21b"
-        load_cmd="pyocd load ${bin_path} -t atzephyrv71q21b"
+        load_cmd="pyocd load ${bin_path} -t atsamv71q21b"
 
         [ "$DEBUG" -eq 1 ] && load_cmd+=" && $debug_cmd"
 
