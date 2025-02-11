@@ -41,6 +41,17 @@ set(CMAKE_VERBOSE_MAKEFILE ON)
 # )
 
 include("${CMAKE_CURRENT_LIST_DIR}/fprime/cmake/FPrime.cmake")
+
+# Basically we just want to avoid the install target and util targets
+set(FPRIME_SUB_BUILD_TARGETS
+    target/build    # TODO add our custom build target here
+    autocoder/fpp
+    autocoder/ai_xml
+    autocoder/packets
+    target/version
+    target/sbom
+)
+
 fprime_setup_included_code()
 
 
