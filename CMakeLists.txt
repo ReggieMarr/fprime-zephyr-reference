@@ -1,5 +1,5 @@
 ####
-# This sets up the build system for the 'fprime-zephyr-led-blinker' project, including
+# This sets up the build system for the 'fprime-zephyr-reference' project, including
 # components and deployments from project.cmake. In addition, it imports the core F Prime components.
 ####
 
@@ -9,7 +9,7 @@ cmake_policy(SET CMP0048 NEW)
 find_package(Zephyr REQUIRED HINTS $ENV{ZEPHYR_BASE})
 set(CMAKE_SYSTEM_NAME "Zephyr")
 
-project(fprime-zephyr-led-blinker C CXX)
+project(fprime-zephyr-reference C CXX)
 
 ###
 # F' Core Setup
