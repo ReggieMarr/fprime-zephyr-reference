@@ -1,0 +1,6 @@
+[manifest]
+path = LedBlinker
+file = west.yml
+
+[zephyr]
+base = zephyr
