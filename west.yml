@@ -1,16 +1,17 @@
-# Copyright (c) 2021 Nordic Semiconductor ASA
-# SPDX-License-Identifier: Apache-2.0
-
 manifest:
+  version: 0.12
   self:
-    west-commands: scripts/west-commands.yml
-
-  remotes:
-    - name: zephyrproject-rtos
-      url-base: https://github.com/zephyrproject-rtos/zephyr
-
+    path: smoketest
   projects:
     - name: zephyr
-      remote: zephyrproject-rtos
-      revision: v3.7.0
-      import: true
+      # This ensures west has access to zephyrs extensions
+      west-commands: scripts/west-commands.yml
+      url: https://github.com/zephyrproject-rtos/zephyr
+      revision: v4.0-branch
+      clone-depth: 1
+      import:
+        path-prefix: deps
+        name-allowlist:
+          - hal_atmel
+          - cmsis
+          - cmsis_6
