@@ -22,17 +22,10 @@
 #define LED1_NODE DT_ALIAS(led1)
 static const struct gpio_dt_spec led0 = GPIO_DT_SPEC_GET(LED0_NODE, gpios);
 static const struct gpio_dt_spec led1 = GPIO_DT_SPEC_GET(LED1_NODE, gpios);
-#define FW_TASK_STACK_SIZE 2048  // Match what Zephyr actually allocates
-
-int blink() {
-    return 0;
-}
-
-const struct device* serial = DEVICE_DT_GET(DT_NODELABEL(cdc_acm_uart0));
+static const struct device* serial = DEVICE_DT_GET(DT_NODELABEL(cdc_acm_uart0));
 
 int main() {
     int ret;
-    bool led_state = true;
     if (!gpio_is_ready_dt(&led0)) {
         return 0;
     }
@@ -72,40 +65,20 @@ int main() {
     inputs.uartBaud = 115200;
 
     // Setup topology
+    Fw::Logger::log("Setting up the Topology\n");
     LedBlinker::setupTopology(inputs);
-    Fw::Logger::log("Setup topology\n");
 
     gpio_pin_set_dt(&led1, 0);
     gpio_pin_set_dt(&led0, 1);
 
-    Fw::Logger::log("Trying to start\n");
-    Os::Task::getSingleton().onStart();
-    Os::Task::Status status;
-    // status = Os::Task::getSingleton().join();
-    // Fw::Logger::log("Join attempted %d\n", status);
-    // Os::Task::State state = Os::Task::getSingleton().getState();
-    // FwSizeType nt = Os::Task::getSingleton().getNumTasks();
-    // do {
-    // 	gpio_pin_toggle_dt(&led0);
-    // 	gpio_pin_toggle_dt(&led1);
-    //     k_msleep(500);
-    //     Os::Task::State state = Os::Task::getSingleton().getState();
-    //     FwSizeType pri = Os::Task::getSingleton().getPriority();
-    //     Fw::Logger::log("State: %d, numTasks: %d, pri: %d\n", state, nt, pri);
-    // } while(state != Os::Task::State::RUNNING && (nt != 0 && Os::Task::getSingleton().hasRegistry()));
+    Fw::Logger::log("Cycling Startup\n");
 
     gpio_pin_set_dt(&led1, 0);
     gpio_pin_set_dt(&led0, 0);
 
-    int cycleCnt = 0;
     while (true) {
-        gpio_pin_toggle_dt(&led0);
-        gpio_pin_toggle_dt(&led1);
         rateDriver.cycle();
-        // if (Os::Task::getSingleton().hasRegistry()) {
-        //     Os::Task::getSingleton().invokeRoutine();
-        // }
-        k_msleep(1);
+        k_usleep(1);
     }
 
     return 0;
