@@ -7,7 +7,6 @@ cmake_minimum_required(VERSION 3.13)
 cmake_policy(SET CMP0048 NEW)
 
 find_package(Zephyr REQUIRED HINTS $ENV{ZEPHYR_BASE})
-set(CMAKE_SYSTEM_NAME "Zephyr")
 
 project(fprime-zephyr-reference C CXX)
 
@@ -19,8 +18,18 @@ project(fprime-zephyr-reference C CXX)
 # set(FPRIME_FRAMEWORK_PATH "${CMAKE_CURRENT_LIST_DIR}/fprime" CACHE PATH "Location of F prime framework" FORCE)
 # set(FPRIME_PROJECT_ROOT "${CMAKE_CURRENT_LIST_DIR}" CACHE PATH "Root path of F prime project" FORCE)
 include("${CMAKE_CURRENT_LIST_DIR}/fprime/cmake/FPrime.cmake")
-# NOTE: register custom targets between these two lines
-include("${FPRIME_FRAMEWORK_PATH}/cmake/FPrime-Code.cmake")
+
+# Basically we just want to avoid the install target and util targets
+set(FPRIME_SUB_BUILD_TARGETS
+    target/build    # TODO add our custom build target here
+    autocoder/fpp
+    autocoder/ai_xml
+    autocoder/packets
+    target/version
+    target/sbom
+)
+
+fprime_setup_included_code()
 
 
 # This includes project-wide objects
