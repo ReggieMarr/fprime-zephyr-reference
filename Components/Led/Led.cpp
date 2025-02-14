@@ -18,19 +18,19 @@ Led ::Led(const char* const compName)
 
 Led ::~Led() {}
 
-void Led ::parameterUpdated(FwPrmIdType id) {
-    // Read back the parameter value
-    Fw::ParamValid isValid;
-    U32 interval = this->paramGet_BLINK_INTERVAL(isValid);
-    // NOTE: isValid is always VALID in parameterUpdated as it was just properly set
-    FW_ASSERT(isValid == Fw::ParamValid::VALID, isValid);
+// void Led ::parameterUpdated(FwPrmIdType id) {
+//     // Read back the parameter value
+//     Fw::ParamValid isValid;
+//     U32 interval = this->paramGet_BLINK_INTERVAL(isValid);
+//     // NOTE: isValid is always VALID in parameterUpdated as it was just properly set
+//     FW_ASSERT(isValid == Fw::ParamValid::VALID, isValid);
 
-    // Check the parameter ID is expected
-    if (PARAMID_BLINK_INTERVAL == id) {
-        // Emit the blink interval set event
-        this->log_ACTIVITY_HI_BlinkIntervalSet(interval);
-    }
-}
+//     // Check the parameter ID is expected
+//     if (PARAMID_BLINK_INTERVAL == id) {
+//         // Emit the blink interval set event
+//         this->log_ACTIVITY_HI_BlinkIntervalSet(interval);
+//     }
+// }
 
 // ----------------------------------------------------------------------
 // Handler implementations for user-defined typed input ports
@@ -38,11 +38,11 @@ void Led ::parameterUpdated(FwPrmIdType id) {
 
 void Led ::run_handler(const NATIVE_INT_TYPE portNum, NATIVE_UINT_TYPE context) {
     // Read back the parameter value
-    Fw::ParamValid isValid;
-    U32 interval = this->paramGet_BLINK_INTERVAL(isValid);
+    // Fw::ParamValid isValid;
+    U32 interval = 1000;//this->paramGet_BLINK_INTERVAL(isValid);
 
     // Force interval to be 0 when invalid or not set
-    interval = ((Fw::ParamValid::INVALID == isValid) || (Fw::ParamValid::UNINIT == isValid)) ? 0 : interval;
+    // interval = ((Fw::ParamValid::INVALID == isValid) || (Fw::ParamValid::UNINIT == isValid)) ? 0 : interval;
 
     // Only perform actions when set to blinking
     bool is_blinking = this->blinking;

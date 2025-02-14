@@ -33,8 +33,8 @@ module Components {
         @ Telemetry channel counting LED transitions
         telemetry LedTransitions: U32
 
-        @ Blinking interval in rate group ticks
-        param BLINK_INTERVAL: U32
+        # @ Blinking interval in rate group ticks
+        # param BLINK_INTERVAL: U32
 
         @ Port receiving calls from the rate group
         sync input port run: Svc.Sched
@@ -66,11 +66,11 @@ module Components {
         @ Port for sending telemetry channels to downlink
         telemetry port tlmOut
 
-        @ Port to return the value of a parameter
-        param get port prmGetOut
+        # @ Port to return the value of a parameter
+        # param get port prmGetOut
 
-        @Port to set the value of a parameter
-        param set port prmSetOut
+        # @Port to set the value of a parameter
+        # param set port prmSetOut
 
     }
 }
