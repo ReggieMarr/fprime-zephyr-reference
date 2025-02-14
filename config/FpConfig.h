@@ -356,6 +356,10 @@ typedef FwIndexType FwQueueSizeType;
 #define FW_ENABLE_TEXT_LOGGING 1  //!< Indicates whether text logging is turned on
 #endif
 
+#ifndef FPRIME_ENABLE_TEXT_LOGGERS
+#define FPRIME_ENABLE_TEXT_LOGGERS 1  //!< Indicates whether text logging is turned on
+#endif
+
 // Define the size of the text log string buffer. Should be large enough for format string and arguments
 #ifndef FW_LOG_TEXT_BUFFER_SIZE
 #define FW_LOG_TEXT_BUFFER_SIZE 128  //!< Max size of string for text log message

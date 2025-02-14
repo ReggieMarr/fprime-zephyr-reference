@@ -6,6 +6,8 @@
 
 #include <Components/Led/Led.hpp>
 #include <FpConfig.hpp>
+#include "Fw/Logger/Logger.hpp"
+#include "Fw/Types/String.hpp"
 
 namespace Components {
 
@@ -14,7 +16,8 @@ namespace Components {
 // ----------------------------------------------------------------------
 
 Led ::Led(const char* const compName)
-    : LedComponentBase(compName), state(Fw::On::OFF), transitions(0), count(0), blinking(true) {}
+    : LedComponentBase(compName), state(Fw::On::OFF), transitions(0), count(0), blinking(true) {
+}
 
 Led ::~Led() {}
 
@@ -39,7 +42,7 @@ Led ::~Led() {}
 void Led ::run_handler(const NATIVE_INT_TYPE portNum, NATIVE_UINT_TYPE context) {
     // Read back the parameter value
     // Fw::ParamValid isValid;
-    U32 interval = 1000;//this->paramGet_BLINK_INTERVAL(isValid);
+    U32 interval = 1000;  // this->paramGet_BLINK_INTERVAL(isValid);
 
     // Force interval to be 0 when invalid or not set
     // interval = ((Fw::ParamValid::INVALID == isValid) || (Fw::ParamValid::UNINIT == isValid)) ? 0 : interval;
@@ -58,7 +61,9 @@ void Led ::run_handler(const NATIVE_INT_TYPE portNum, NATIVE_UINT_TYPE context) 
         // A transition has occurred
         if (this->state != new_state) {
             this->transitions = this->transitions + 1;
-            this->tlmWrite_LedTransitions(this->transitions);
+            if (this->isConnected_tlmOut_OutputPort(0)) {
+                this->tlmWrite_LedTransitions(this->transitions);
+            }
 
             // Port may not be connected, so check before sending output
             if (this->isConnected_gpioSet_OutputPort(0)) {
@@ -94,11 +99,20 @@ void Led ::BLINKING_ON_OFF_cmdHandler(const FwOpcodeType opCode, const U32 cmdSe
 
         this->log_ACTIVITY_HI_SetBlinkingState(on_off);
 
-        this->tlmWrite_BlinkingState(on_off);
+        if (this->isConnected_tlmOut_OutputPort(0)) {
+            this->tlmWrite_BlinkingState(on_off);
+        } else {
+            Fw::String str;
+            on_off.toString(str);
+            Fw::Logger::log("Tlm port not connected, toggled [%s]\n", str.toChar());
+        }
     }
+    // if (!this->isConnected_cmdResponseOut_OutputPort(opCode)) {
+    //     return;
+    // }
 
-    // Provide command response
-    this->cmdResponse_out(opCode, cmdSeq, cmdResp);
+    // // Provide command response
+    // this->cmdResponse_out(opCode, cmdSeq, cmdResp);
 }
 
 }  // end namespace Components

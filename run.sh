@@ -377,6 +377,9 @@ EOF
         echo "Not yet supported"
         exit 1
       ;;
+      "env")
+        update_build_env "${SCRIPT_DIR}/build"
+      ;;
       "gds")
         #NOTE the gds port is not the debug port, if incorrectly selected the serial output will appear garbled (see exec console output)
         gds_port=${3:-"/dev/ttyACM0"}
