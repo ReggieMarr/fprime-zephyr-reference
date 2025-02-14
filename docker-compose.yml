@@ -20,6 +20,8 @@ services:
       extends: zephyr
       privileged: true
       devices:
+        - "/dev/ttyACM0:/dev/ttyACM0"
+        - "/dev/ttyACM1:/dev/ttyACM1"
         - "/dev/bus/usb:/dev/bus/usb"
         - "/dev/usb:/dev/usb"
       group_add:
