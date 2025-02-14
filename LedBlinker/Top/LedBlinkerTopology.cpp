@@ -21,12 +21,9 @@ static Svc::FprimeFraming framing;
 static Svc::FprimeDeframing deframing;
 
 // The reference topology divides the incoming clock signal (1kHz) into sub-signals: 10Hz
-static Svc::RateGroupDriver::DividerSet rateGroupDivisors = {{
-    { static_cast<NATIVE_INT_TYPE>(LedBlinker::FppConstant_RATE_1KHZ_DIVISOR::RATE_1KHZ_DIVISOR), 0 },
-    { static_cast<NATIVE_INT_TYPE>(LedBlinker::FppConstant_RATE_10KHZ_DIVISOR::RATE_10KHZ_DIVISOR), 0 }
-}};
-
-
+static Svc::RateGroupDriver::DividerSet rateGroupDivisors = {
+    {{static_cast<NATIVE_INT_TYPE>(LedBlinker::FppConstant_RATE_1KHZ_DIVISOR::RATE_1KHZ_DIVISOR), 0},
+     {static_cast<NATIVE_INT_TYPE>(LedBlinker::FppConstant_RATE_10KHZ_DIVISOR::RATE_10KHZ_DIVISOR), 0}}};
 
 // Rate groups may supply a context token to each of the attached children whose purpose is set by the project. The
 // reference topology sets each token to zero as these contexts are unused in this project.
@@ -39,8 +36,8 @@ static const size_t BUFFER_MANAGER_ID = 200;
 
 static const FwSizeType COMM_PRIORITY = 49;
 // bufferManager constants
-static const FwSizeType FRAMER_BUFFER_SIZE = FW_MAX(FW_COM_BUFFER_MAX_SIZE, FW_FILE_BUFFER_MAX_SIZE + sizeof(U32)) +
-                                             Svc::FpFrameHeader::SIZE;
+static const FwSizeType FRAMER_BUFFER_SIZE =
+    FW_MAX(FW_COM_BUFFER_MAX_SIZE, FW_FILE_BUFFER_MAX_SIZE + sizeof(U32)) + Svc::FpFrameHeader::SIZE;
 static const FwSizeType FRAMER_BUFFER_COUNT = 30;
 static const FwSizeType DEFRAMER_BUFFER_SIZE = FW_MAX(FW_COM_BUFFER_MAX_SIZE, FW_FILE_BUFFER_MAX_SIZE + sizeof(U32));
 static const FwSizeType DEFRAMER_BUFFER_COUNT = 30;
@@ -91,13 +88,11 @@ void setupTopology(const TopologyState& state) {
 
     // Configure GPIO pins
     gpioDriver.open(led_pin, Zephyr::ZephyrGpioDriver::GpioDirection::OUT);
-
-    // Configure hardware rate driver
-    rateDriver.configure(LedBlinker::FppConstant_RATE_INTERVAL_MS::RATE_INTERVAL_MS);
     // Configure StreamDriver / UART
     commDriver.configure(state.dev, state.uartBaud);
 
-    // Start hardware rate driver
+    // Configure & Start hardware rate driver
+    rateDriver.configure(LedBlinker::FppConstant_RATE_INTERVAL_MS::RATE_INTERVAL_MS);
     rateDriver.start();
 }
 

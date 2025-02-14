@@ -6,12 +6,12 @@ module LedBlinker {
 
   module Default {
     constant QUEUE_SIZE = 3
-    constant STACK_SIZE = 2 * 1024
+    constant STACK_SIZE = 4 * 1024
   }
 
   constant RATE_INTERVAL_MS = 1
-  constant RATE_1KHZ_DIVISOR = 1000
-  constant RATE_10KHZ_DIVISOR = 100
+  constant RATE_1KHZ_DIVISOR = 2000
+  constant RATE_10KHZ_DIVISOR = 1000
 
   # ----------------------------------------------------------------------
   # Active component instances
@@ -28,8 +28,8 @@ module LedBlinker {
     priority 10
 
   instance tlmSend: Svc.TlmChan base id 0x0300 \
-    queue size Default.QUEUE_SIZE * 5 \
-    stack size Default.STACK_SIZE \
+    queue size Default.QUEUE_SIZE * 5\
+    stack size Default.STACK_SIZE  \
     priority 8
 
   # ----------------------------------------------------------------------
