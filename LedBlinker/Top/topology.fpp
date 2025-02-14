@@ -5,7 +5,8 @@ module LedBlinker {
   # ----------------------------------------------------------------------
 
     enum Ports_RateGroups {
-      rateGroup1
+      rateGroup1Khz_ID
+      rateGroup10Khz_ID
     }
 
     enum Ports_StaticMemory {
@@ -28,11 +29,11 @@ module LedBlinker {
     instance fatalHandler
     instance framer
     instance gpioDriver
-    # instance led
+    instance led
     instance rateDriver
-    instance rateGroup1
+    instance rateGroup1Khz
+    instance rateGroup10Khz
     instance rateGroupDriver
-    # instance staticMemory
     instance systemResources
     instance textLogger
     instance timeHandler
@@ -62,17 +63,24 @@ module LedBlinker {
       rateDriver.CycleOut -> rateGroupDriver.CycleIn
 
       # Rate group 1
-      rateGroupDriver.CycleOut[Ports_RateGroups.rateGroup1] -> rateGroup1.CycleIn
-      rateGroup1.RateGroupMemberOut[0] -> commDriver.schedIn
-      rateGroup1.RateGroupMemberOut[1] -> systemResources.run
-      rateGroup1.RateGroupMemberOut[2] -> bufferManager.schedIn
-      rateGroup1.RateGroupMemberOut[3] -> tlmSend.Run
+      rateGroupDriver.CycleOut[Ports_RateGroups.rateGroup1Khz_ID] -> rateGroup1Khz.CycleIn
+      rateGroup1Khz.RateGroupMemberOut[0] -> systemResources.run
+      rateGroup1Khz.RateGroupMemberOut[1] -> tlmSend.Run
+      rateGroup1Khz.RateGroupMemberOut[2] -> led.run
 
+      rateGroupDriver.CycleOut[Ports_RateGroups.rateGroup10Khz_ID] -> rateGroup10Khz.CycleIn
+      rateGroup10Khz.RateGroupMemberOut[0] -> commDriver.schedIn
+      rateGroup10Khz.RateGroupMemberOut[1] -> bufferManager.schedIn
     }
 
-    # connections FaultProtection {
-    #   eventLogger.FatalAnnounce -> fatalHandler.FatalReceive
-    # }
+    connections LedConnections {
+      # led's gpioSet output is connected to gpioDriver's gpioWrite input
+      led.gpioSet -> gpioDriver.gpioWrite
+    }
+
+    connections FaultProtection {
+      eventLogger.FatalAnnounce -> fatalHandler.FatalReceive
+    }
 
     connections SerialComms {
       # Downlink
@@ -96,17 +104,6 @@ module LedBlinker {
 
       deframer.bufferAllocate -> bufferManager.bufferGetCallee
       deframer.bufferDeallocate -> bufferManager.bufferSendIn
-    }
-
-    # connections LedConnections {
-    #   # Rate Group 1 (1Hz cycle) ouput is connected to led's run input
-    #   rateGroup1.RateGroupMemberOut[3] -> led.run
-    #   # led's gpioSet output is connected to gpioDriver's gpioWrite input
-    #   led.gpioSet -> gpioDriver.gpioWrite
-    # }
-
-    connections LedBlinker {
-      # Add here connections to user-defined components
     }
 
   }

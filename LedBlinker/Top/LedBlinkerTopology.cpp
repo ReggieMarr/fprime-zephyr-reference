@@ -20,13 +20,18 @@ static const struct gpio_dt_spec led_pin = GPIO_DT_SPEC_GET(DT_ALIAS(led0), gpio
 static Svc::FprimeFraming framing;
 static Svc::FprimeDeframing deframing;
 
-// The reference topology divides the incoming clock signal (1kHz) into sub-signals: 10Hz, 5Hz, and 1Hz
-// Svc::RateGroupDriver::DividerSet rateGroupDivisors = {{ {100, 0}, {200, 0}, {1000, 0} }};
-static Svc::RateGroupDriver::DividerSet rateGroupDivisors = {{{1000, 0}, {1000, 0}}};
+// The reference topology divides the incoming clock signal (1kHz) into sub-signals: 10Hz
+static Svc::RateGroupDriver::DividerSet rateGroupDivisors = {{
+    { static_cast<NATIVE_INT_TYPE>(LedBlinker::FppConstant_RATE_1KHZ_DIVISOR::RATE_1KHZ_DIVISOR), 0 },
+    { static_cast<NATIVE_INT_TYPE>(LedBlinker::FppConstant_RATE_10KHZ_DIVISOR::RATE_10KHZ_DIVISOR), 0 }
+}};
+
+
 
 // Rate groups may supply a context token to each of the attached children whose purpose is set by the project. The
 // reference topology sets each token to zero as these contexts are unused in this project.
-static NATIVE_INT_TYPE rateGroup1Context[FppConstant_PassiveRateGroupOutputPorts::PassiveRateGroupOutputPorts] = {};
+static NATIVE_INT_TYPE rateGroup1KhzContext[FppConstant_PassiveRateGroupOutputPorts::PassiveRateGroupOutputPorts] = {};
+static NATIVE_INT_TYPE rateGroup10KhzContext[FppConstant_PassiveRateGroupOutputPorts::PassiveRateGroupOutputPorts] = {};
 
 static const size_t COM_BUFFER_SIZE = 128;
 static const size_t COM_BUFFER_COUNT = 3;
@@ -57,7 +62,8 @@ static void configureTopology() {
     LedBlinker::rateGroupDriver.configure(rateGroupDivisors);
 
     // Rate groups require context arrays.
-    LedBlinker::rateGroup1.configure(rateGroup1Context, FW_NUM_ARRAY_ELEMENTS(rateGroup1Context));
+    LedBlinker::rateGroup1Khz.configure(rateGroup1KhzContext, FW_NUM_ARRAY_ELEMENTS(rateGroup1KhzContext));
+    LedBlinker::rateGroup10Khz.configure(rateGroup10KhzContext, FW_NUM_ARRAY_ELEMENTS(rateGroup10KhzContext));
 
     Svc::BufferManager::BufferBins buffMgrBins;
     std::memset(&buffMgrBins, 0, sizeof(buffMgrBins));
@@ -87,7 +93,7 @@ void setupTopology(const TopologyState& state) {
     gpioDriver.open(led_pin, Zephyr::ZephyrGpioDriver::GpioDirection::OUT);
 
     // Configure hardware rate driver
-    rateDriver.configure(1);
+    rateDriver.configure(LedBlinker::FppConstant_RATE_INTERVAL_MS::RATE_INTERVAL_MS);
     // Configure StreamDriver / UART
     commDriver.configure(state.dev, state.uartBaud);
 

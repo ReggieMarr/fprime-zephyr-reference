@@ -9,6 +9,10 @@ module LedBlinker {
     constant STACK_SIZE = 2 * 1024
   }
 
+  constant RATE_INTERVAL_MS = 1
+  constant RATE_1KHZ_DIVISOR = 1000
+  constant RATE_10KHZ_DIVISOR = 100
+
   # ----------------------------------------------------------------------
   # Active component instances
   # ----------------------------------------------------------------------
@@ -24,8 +28,8 @@ module LedBlinker {
     priority 10
 
   instance tlmSend: Svc.TlmChan base id 0x0300 \
-    queue size 15 \
-    stack size (5 * 1024) \
+    queue size Default.QUEUE_SIZE * 5 \
+    stack size Default.STACK_SIZE \
     priority 8
 
   # ----------------------------------------------------------------------
@@ -36,7 +40,9 @@ module LedBlinker {
   # Passive component instances
   # ----------------------------------------------------------------------
 
-  instance rateGroup1: Svc.PassiveRateGroup base id 0x1000
+  instance rateGroup1Khz: Svc.PassiveRateGroup base id 0x900
+
+  instance rateGroup10Khz: Svc.PassiveRateGroup base id 0x1000
 
   instance rateDriver: Zephyr.ZephyrRateDriver base id 0x1100
 
@@ -46,13 +52,13 @@ module LedBlinker {
 
   instance fatalAdapter: Svc.AssertFatalAdapter base id 0x4200
 
-  instance fatalHandler: Baremetal.FatalHandler base id 0x4300
+  instance fatalHandler: Zephyr.FatalHandler base id 0x4300
 
   instance timeHandler: Zephyr.ZephyrTime base id 0x4400
 
   instance rateGroupDriver: Svc.RateGroupDriver base id 0x4500
 
-  instance staticMemory: Svc.StaticMemory base id 0x4600
+  instance bufferManager: Svc.BufferManager base id 0x4600
 
   instance textLogger: Svc.PassiveTextLogger base id 0x4700
 
@@ -62,8 +68,6 @@ module LedBlinker {
 
   instance gpioDriver: Zephyr.ZephyrGpioDriver base id 0x4C00
 
-  instance bufferManager: Svc.BufferManager base id 0x10000
-
-  # instance led: Components.Led base id 0x10000
+  instance led: Components.Led base id 0x10000
 
 }
