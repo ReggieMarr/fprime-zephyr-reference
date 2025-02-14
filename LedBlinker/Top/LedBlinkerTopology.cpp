@@ -9,25 +9,40 @@
 
 // Necessary project-specified types
 #include <Svc/FramingProtocol/FprimeProtocol.hpp>
+#include "Zephyr/Fw/ZephyrAllocator/ZephyrAllocator.hpp"
 
 #include <zephyr/drivers/gpio.h>
 
 static const struct gpio_dt_spec led_pin = GPIO_DT_SPEC_GET(DT_ALIAS(led0), gpios);
 
-// Allows easy reference to objects in FPP/autocoder required namespaces
-using namespace LedBlinker;
-
 // The reference topology uses the F´ packet protocol when communicating with the ground and therefore uses the F´
 // framing and deframing implementations.
-Svc::FprimeFraming framing;
-Svc::FprimeDeframing deframing;
+static Svc::FprimeFraming framing;
+static Svc::FprimeDeframing deframing;
 
 // The reference topology divides the incoming clock signal (1kHz) into sub-signals: 10Hz, 5Hz, and 1Hz
-Svc::RateGroupDriver::DividerSet rateGroupDivisors = {{ {100, 0}, {200, 0}, {1000, 0} }};
+// Svc::RateGroupDriver::DividerSet rateGroupDivisors = {{ {100, 0}, {200, 0}, {1000, 0} }};
+static Svc::RateGroupDriver::DividerSet rateGroupDivisors = {{{1000, 0}, {1000, 0}}};
 
 // Rate groups may supply a context token to each of the attached children whose purpose is set by the project. The
 // reference topology sets each token to zero as these contexts are unused in this project.
-NATIVE_INT_TYPE rateGroup1Context[FppConstant_PassiveRateGroupOutputPorts::PassiveRateGroupOutputPorts] = {};
+static NATIVE_INT_TYPE rateGroup1Context[FppConstant_PassiveRateGroupOutputPorts::PassiveRateGroupOutputPorts] = {};
+
+static const size_t COM_BUFFER_SIZE = 128;
+static const size_t COM_BUFFER_COUNT = 3;
+static const size_t BUFFER_MANAGER_ID = 200;
+
+static const FwSizeType COMM_PRIORITY = 49;
+// bufferManager constants
+static const FwSizeType FRAMER_BUFFER_SIZE = FW_MAX(FW_COM_BUFFER_MAX_SIZE, FW_FILE_BUFFER_MAX_SIZE + sizeof(U32)) +
+                                             Svc::FpFrameHeader::SIZE;
+static const FwSizeType FRAMER_BUFFER_COUNT = 30;
+static const FwSizeType DEFRAMER_BUFFER_SIZE = FW_MAX(FW_COM_BUFFER_MAX_SIZE, FW_FILE_BUFFER_MAX_SIZE + sizeof(U32));
+static const FwSizeType DEFRAMER_BUFFER_COUNT = 30;
+static const FwSizeType COM_DRIVER_BUFFER_SIZE = 3000;
+static const FwSizeType COM_DRIVER_BUFFER_COUNT = 30;
+
+static Fw::ZephyrAllocator mallocator;
 
 /**
  * \brief configure/setup components in project-specific way
@@ -36,46 +51,48 @@ NATIVE_INT_TYPE rateGroup1Context[FppConstant_PassiveRateGroupOutputPorts::Passi
  * allocating resources, passing-in arguments, etc. This function may be inlined into the topology setup function if
  * desired, but is extracted here for clarity.
  */
-void configureTopology() {
+static void configureTopology() {
+    // Command sequencer needs to allocate memory to hold contents of command sequences
     // Rate group driver needs a divisor list
-    rateGroupDriver.configure(rateGroupDivisors);
+    LedBlinker::rateGroupDriver.configure(rateGroupDivisors);
 
     // Rate groups require context arrays.
-    rateGroup1.configure(rateGroup1Context, FW_NUM_ARRAY_ELEMENTS(rateGroup1Context));
+    LedBlinker::rateGroup1.configure(rateGroup1Context, FW_NUM_ARRAY_ELEMENTS(rateGroup1Context));
+
+    Svc::BufferManager::BufferBins buffMgrBins;
+    std::memset(&buffMgrBins, 0, sizeof(buffMgrBins));
+
+    buffMgrBins.bins[0].bufferSize = FRAMER_BUFFER_SIZE;
+    buffMgrBins.bins[0].numBuffers = FRAMER_BUFFER_COUNT;
+    buffMgrBins.bins[1].bufferSize = DEFRAMER_BUFFER_SIZE;
+    buffMgrBins.bins[1].numBuffers = DEFRAMER_BUFFER_COUNT;
+    buffMgrBins.bins[2].bufferSize = COM_DRIVER_BUFFER_SIZE;
+    buffMgrBins.bins[2].numBuffers = COM_DRIVER_BUFFER_COUNT;
+
+    LedBlinker::bufferManager.setup(BUFFER_MANAGER_ID, 0, mallocator, buffMgrBins);
 
     // Framer and Deframer components need to be passed a protocol handler
-    framer.setup(framing);
-    deframer.setup(deframing);
-
-    gpioDriver.open(led_pin, Zephyr::ZephyrGpioDriver::GpioDirection::OUT);
+    LedBlinker::framer.setup(framing);
+    LedBlinker::deframer.setup(deframing);
 }
 
 // Public functions for use in main program are namespaced with deployment name LedBlinker
 namespace LedBlinker {
 void setupTopology(const TopologyState& state) {
-    // Autocoded initialization. Function provided by autocoder.
-    initComponents(state);
-    // Autocoded id setup. Function provided by autocoder.
-    setBaseIds();
-    // Autocoded connection wiring. Function provided by autocoder.
-    connectComponents();
-    // Autocoded command registration. Function provided by autocoder.
-    regCommands();
-    // Project-specific component configuration. Function provided above. May be inlined, if desired.
     configureTopology();
-    // Autocoded parameter loading. Function provided by autocoder.
-    // loadParameters();
-    // Autocoded task kick-off (active components). Function provided by autocoder.
-    startTasks(state);
-    
+
+    setup(state);
+
+    // Configure GPIO pins
+    gpioDriver.open(led_pin, Zephyr::ZephyrGpioDriver::GpioDirection::OUT);
+
+    // Configure hardware rate driver
     rateDriver.configure(1);
+    // Configure StreamDriver / UART
     commDriver.configure(state.dev, state.uartBaud);
+
+    // Start hardware rate driver
     rateDriver.start();
 }
 
-void teardownTopology(const TopologyState& state) {
-    // Autocoded (active component) task clean-up. Functions provided by topology autocoder.
-    stopTasks(state);
-    freeThreads(state);
-}
 };  // namespace LedBlinker

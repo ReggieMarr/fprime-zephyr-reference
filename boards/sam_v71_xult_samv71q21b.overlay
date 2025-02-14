@@ -1,0 +1,18 @@
+&usart1 {
+    status = "okay";
+    current-speed = <115200>;
+};
+
+&zephyr_udc0 {
+    status = "okay";
+    cdc_acm_uart0: cdc_acm_uart0 {
+        compatible = "zephyr,cdc-acm-uart";
+    };
+};
+
+/ {
+    aliases {
+        led0 = &yellow_led0;
+        led1 = &yellow_led1;
+    };
+};
