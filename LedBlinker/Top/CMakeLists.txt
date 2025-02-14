@@ -13,6 +13,7 @@ set(SOURCE_FILES
 set(MOD_DEPS
   Fw/Logger
   Zephyr/Svc/ZephyrTime
+  Zephyr/Fw/ZephyrAllocator
 )
 
 register_fprime_module()
