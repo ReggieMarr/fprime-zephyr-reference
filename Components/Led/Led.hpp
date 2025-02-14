@@ -33,8 +33,8 @@ namespace Components {
 
       //! Emit parameter updated EVR
       //!
-      void parameterUpdated(FwPrmIdType id /*!< The parameter ID*/
-      );
+      // void parameterUpdated(FwPrmIdType id /*!< The parameter ID*/
+      // );
 
     PRIVATE:
 
