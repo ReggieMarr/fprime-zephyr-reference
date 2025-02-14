@@ -26,7 +26,6 @@ static const struct device* serial = DEVICE_DT_GET(DT_NODELABEL(cdc_acm_uart0));
 
 int main() {
     int ret;
-    bool led_state = true;
     if (!gpio_is_ready_dt(&led0)) {
         return 0;
     }
@@ -77,7 +76,6 @@ int main() {
     gpio_pin_set_dt(&led1, 0);
     gpio_pin_set_dt(&led0, 0);
 
-    int cycleCnt = 0;
     while (true) {
         rateDriver.cycle();
         k_usleep(1);
