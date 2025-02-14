@@ -28,14 +28,15 @@ module LedBlinker {
     instance fatalHandler
     instance framer
     instance gpioDriver
-    instance led
+    # instance led
     instance rateDriver
     instance rateGroup1
     instance rateGroupDriver
-    instance staticMemory
+    # instance staticMemory
     instance systemResources
     instance textLogger
     instance timeHandler
+    instance bufferManager
     instance tlmSend
 
     # ----------------------------------------------------------------------
@@ -63,46 +64,46 @@ module LedBlinker {
       # Rate group 1
       rateGroupDriver.CycleOut[Ports_RateGroups.rateGroup1] -> rateGroup1.CycleIn
       rateGroup1.RateGroupMemberOut[0] -> commDriver.schedIn
-      rateGroup1.RateGroupMemberOut[1] -> tlmSend.Run
-      rateGroup1.RateGroupMemberOut[2] -> systemResources.run
+      rateGroup1.RateGroupMemberOut[1] -> systemResources.run
+      rateGroup1.RateGroupMemberOut[2] -> bufferManager.schedIn
+      rateGroup1.RateGroupMemberOut[3] -> tlmSend.Run
+
     }
 
-    connections FaultProtection {
-      eventLogger.FatalAnnounce -> fatalHandler.FatalReceive
-    }
+    # connections FaultProtection {
+    #   eventLogger.FatalAnnounce -> fatalHandler.FatalReceive
+    # }
 
-    connections Downlink {
-
+    connections SerialComms {
+      # Downlink
       tlmSend.PktSend -> framer.comIn
       eventLogger.PktSend -> framer.comIn
 
-      framer.framedAllocate -> staticMemory.bufferAllocate[Ports_StaticMemory.framer]
+      framer.framedAllocate -> bufferManager.bufferGetCallee
       framer.framedOut -> commDriver.$send
 
-      commDriver.deallocate -> staticMemory.bufferDeallocate[Ports_StaticMemory.framer]
+      commDriver.deallocate -> bufferManager.bufferSendIn
 
-    }
-    
-    connections Uplink {
 
-      commDriver.allocate -> staticMemory.bufferAllocate[Ports_StaticMemory.deframer]
+      # Uplink
       commDriver.$recv -> deframer.framedIn
-      deframer.framedDeallocate -> staticMemory.bufferDeallocate[Ports_StaticMemory.deframer]
+      commDriver.allocate -> bufferManager.bufferGetCallee
+
+      deframer.framedDeallocate -> bufferManager.bufferSendIn
 
       deframer.comOut -> cmdDisp.seqCmdBuff
       cmdDisp.seqCmdStatus -> deframer.cmdResponseIn
 
-      deframer.bufferAllocate -> staticMemory.bufferAllocate[Ports_StaticMemory.deframing]
-      deframer.bufferDeallocate -> staticMemory.bufferDeallocate[Ports_StaticMemory.deframing]
-      
+      deframer.bufferAllocate -> bufferManager.bufferGetCallee
+      deframer.bufferDeallocate -> bufferManager.bufferSendIn
     }
 
-    connections LedConnections {
-      # Rate Group 1 (1Hz cycle) ouput is connected to led's run input
-      rateGroup1.RateGroupMemberOut[3] -> led.run
-      # led's gpioSet output is connected to gpioDriver's gpioWrite input
-      led.gpioSet -> gpioDriver.gpioWrite
-    }
+    # connections LedConnections {
+    #   # Rate Group 1 (1Hz cycle) ouput is connected to led's run input
+    #   rateGroup1.RateGroupMemberOut[3] -> led.run
+    #   # led's gpioSet output is connected to gpioDriver's gpioWrite input
+    #   led.gpioSet -> gpioDriver.gpioWrite
+    # }
 
     connections LedBlinker {
       # Add here connections to user-defined components

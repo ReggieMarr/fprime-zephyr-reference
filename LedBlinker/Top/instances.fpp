@@ -6,7 +6,7 @@ module LedBlinker {
 
   module Default {
     constant QUEUE_SIZE = 3
-    constant STACK_SIZE = 16 * 1024
+    constant STACK_SIZE = 2 * 1024
   }
 
   # ----------------------------------------------------------------------
@@ -16,17 +16,17 @@ module LedBlinker {
   instance cmdDisp: Svc.CommandDispatcher base id 0x0100 \
     queue size Default.QUEUE_SIZE\
     stack size Default.STACK_SIZE \
-    priority 101
+    priority 11
 
   instance eventLogger: Svc.ActiveLogger base id 0x0200 \
     queue size Default.QUEUE_SIZE \
     stack size Default.STACK_SIZE \
-    priority 98
+    priority 10
 
   instance tlmSend: Svc.TlmChan base id 0x0300 \
     queue size 15 \
-    stack size Default.STACK_SIZE \
-    priority 97
+    stack size (5 * 1024) \
+    priority 8
 
   # ----------------------------------------------------------------------
   # Queued component instances
@@ -62,6 +62,8 @@ module LedBlinker {
 
   instance gpioDriver: Zephyr.ZephyrGpioDriver base id 0x4C00
 
-  instance led: Components.Led base id 0x10000
+  instance bufferManager: Svc.BufferManager base id 0x10000
+
+  # instance led: Components.Led base id 0x10000
 
 }

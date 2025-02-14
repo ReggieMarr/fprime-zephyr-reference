@@ -13,7 +13,7 @@
 
 #include <Fw/Types/BasicTypes.h>
 
-#ifdef  __cplusplus
+#ifdef __cplusplus
 extern "C" {
 #endif
 
@@ -251,7 +251,7 @@ typedef FwIndexType FwQueueSizeType;
 #if FW_OBJECT_REGISTRATION
 // For the simple object registry provided with the framework, this specifies how many objects the registry will store.
 #ifndef FW_OBJ_SIMPLE_REG_ENTRIES
-#define FW_OBJ_SIMPLE_REG_ENTRIES 128  //!< Number of objects stored in simple object registry
+#define FW_OBJ_SIMPLE_REG_ENTRIES 500  //!< Number of objects stored in simple object registry
 #endif
 // When dumping the contents of the registry, this specifies the size of the buffer used to store object names. Should
 // be >= FW_OBJ_NAME_BUFFER_SIZE.
@@ -269,12 +269,12 @@ typedef FwIndexType FwQueueSizeType;
 
 // Specifies the size of the string holding the queue name for queues
 #ifndef FW_QUEUE_NAME_BUFFER_SIZE
-#define FW_QUEUE_NAME_BUFFER_SIZE 1  //!< Max size of message queue name
+#define FW_QUEUE_NAME_BUFFER_SIZE 10  //!< Max size of message queue name
 #endif
 
 // Specifies the size of the string holding the task name for active components and tasks
 #ifndef FW_TASK_NAME_BUFFER_SIZE
-#define FW_TASK_NAME_BUFFER_SIZE 1  //!< Max size of task name
+#define FW_TASK_NAME_BUFFER_SIZE 10  //!< Max size of task name
 #endif
 
 // Specifies the size of the buffer that contains a communications packet.
@@ -305,7 +305,7 @@ typedef FwIndexType FwQueueSizeType;
 // Setting the below to zero will disable the check at the cost of not detecting commands that
 // are too large.
 #ifndef FW_CMD_CHECK_RESIDUAL
-#define FW_CMD_CHECK_RESIDUAL 0  //!< Check for leftover command bytes
+#define FW_CMD_CHECK_RESIDUAL 1  //!< Check for leftover command bytes
 #endif
 
 // Specifies the size of the buffer that contains the serialized log arguments.
@@ -321,12 +321,14 @@ typedef FwIndexType FwQueueSizeType;
 
 // Specifies the size of the buffer that contains the serialized telemetry value.
 #ifndef FW_TLM_BUFFER_MAX_SIZE
-#define FW_TLM_BUFFER_MAX_SIZE 12 + sizeof(FwChanIdType) + sizeof(FwPacketDescriptorType) // (FW_COM_BUFFER_MAX_SIZE - sizeof(FwChanIdType) - sizeof(FwPacketDescriptorType))
+#define FW_TLM_BUFFER_MAX_SIZE \
+    12 + sizeof(FwChanIdType) + sizeof(FwPacketDescriptorType)  // (FW_COM_BUFFER_MAX_SIZE - sizeof(FwChanIdType) -
+                                                                // sizeof(FwPacketDescriptorType))
 #endif
 
 // Specifies the maximum size of a string in a telemetry channel
 #ifndef FW_TLM_STRING_MAX_SIZE
-#define FW_TLM_STRING_MAX_SIZE 10  //!< Max size of channelized telemetry string type
+#define FW_TLM_STRING_MAX_SIZE 20  //!< Max size of channelized telemetry string type
 #endif
 
 // Specifies the size of the buffer that contains the serialized parameter value.
@@ -381,8 +383,6 @@ typedef FwIndexType FwQueueSizeType;
 #define FW_USE_TIME_CONTEXT 1  //!< Whether or not to serialize the time context
 #endif
 
-// Configuration for Fw::String
-
 #ifndef FW_FIXED_LENGTH_STRING_SIZE
 #define FW_FIXED_LENGTH_STRING_SIZE 128  //!< Character array size for Fw::String
 #endif
@@ -393,7 +393,7 @@ typedef FwIndexType FwQueueSizeType;
 #endif
 
 #ifndef FW_TASK_HANDLE_MAX_SIZE
-#define FW_TASK_HANDLE_MAX_SIZE 24  //!< Maximum size of a handle for OS queues
+#define FW_TASK_HANDLE_MAX_SIZE 16  //!< Maximum size of a handle for OS queues
 #endif
 
 #ifndef FW_FILE_HANDLE_MAX_SIZE
@@ -401,7 +401,7 @@ typedef FwIndexType FwQueueSizeType;
 #endif
 
 #ifndef FW_MUTEX_HANDLE_MAX_SIZE
-#define FW_MUTEX_HANDLE_MAX_SIZE 32  //!< Maximum size of a handle for OS queues
+#define FW_MUTEX_HANDLE_MAX_SIZE 16  //!< Maximum size of a handle for OS queues
 #endif
 
 #ifndef FW_QUEUE_HANDLE_MAX_SIZE
@@ -452,7 +452,7 @@ typedef FwIndexType FwQueueSizeType;
 typedef FwSizeStoreType FwBuffSizeType;
 #define PRI_FwBuffSizeType PRI_FwSizeStoreType
 
-#ifdef  __cplusplus
+#ifdef __cplusplus
 }
 #endif
 
