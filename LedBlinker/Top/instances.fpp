@@ -48,7 +48,7 @@ module LedBlinker {
 
   instance fatalHandler: Baremetal.FatalHandler base id 0x4300
 
-  instance timeHandler: Zephyr.ZephyrTime base id 0x4400 \
+  instance timeHandler: Zephyr.ZephyrTime base id 0x4400
 
   instance rateGroupDriver: Svc.RateGroupDriver base id 0x4500
 
