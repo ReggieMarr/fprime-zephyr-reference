@@ -16,7 +16,7 @@ FROM base AS user-setup
 # Create a non-root user for better security practices
 ARG HOST_UID=1000
 ARG HOST_GID=1000
-ARG FSW_WDIR
+ARG FSW_WDIR=/fprime-zephyr-reference
 RUN userdel -r ubuntu || true && \
     getent group 1000 && getent group 1000 | cut -d: -f1 | xargs groupdel || true && \
     groupadd -g ${HOST_GID} user && \
@@ -40,7 +40,6 @@ USER user
 # # Final layer with project setup
 # FROM mplab-setup AS project
 FROM user-setup AS project-setup
-ARG WDIR=/fprime-zephyr-reference
 
 WORKDIR $FSW_WDIR
 
@@ -88,8 +87,8 @@ ENV PATH=$PATH:/home/user/zephyr-sdk-0.17.0/arm-zephyr-eabi/bin
 
 COPY ./deps/zephyr/scripts/requirements.txt .
 
-RUN pip install -r requirements.txt
+# RUN pip install -r requirements.txt
 # RUN west sdk install -t arm-zephyr-eabi
 # RUN west zephyr-export
 
-WORKDIR $WDIR
+WORKDIR $FSW_WDIR
