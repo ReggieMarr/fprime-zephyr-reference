@@ -1,0 +1,15 @@
+manifest:
+  version: 0.12
+  self:
+    path: smoketest
+  projects:
+    - name: zephyr
+      url: https://github.com/zephyrproject-rtos/zephyr
+      revision: v4.0.0
+      clone-depth: 1
+      import:
+        path-prefix: deps
+        name-allowlist:
+          - hal_atmel
+          - cmsis
+          - cmsis_6
