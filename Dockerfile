@@ -4,18 +4,19 @@ ARG DEBIAN_FRONTEND=noninteractive
 ENV TZ='America/Montreal'
 RUN apt-get update && \
     apt-get upgrade -y && \
-    apt-get install -y --no-install-recommends git cmake ninja-build gperf \
-    ccache dfu-util device-tree-compiler wget \
-    python3.12-venv python3-dev python3-pip python3-setuptools python3-tk python3-wheel xz-utils file \
-    make gcc gcc-multilib g++-multilib libsdl2-dev libmagic1
+    apt-get install -y  --no-install-recommends \
+    python3-dev python3 python3-full python3-pip python3-wheel python3-venv libpython3-dev \
+    ninja-build gperf ccache dfu-util device-tree-compiler libicu-dev libsdl2-dev libmagic1 \
+    make gcc gcc-multilib g++-multilib gdb gdbserver cmake build-essential clang-format xz-utils \
+    file wget curl jq git rsync sudo
 
 # User setup layer
 FROM base AS user-setup
-ARG WDIR=/fprime-zephyr-reference
+
+# Create a non-root user for better security practices
 ARG HOST_UID=1000
 ARG HOST_GID=1000
-ENV PATH="/home/user/.local/bin:${PATH}"
-
+ARG FSW_WDIR
 RUN userdel -r ubuntu || true && \
     getent group 1000 && getent group 1000 | cut -d: -f1 | xargs groupdel || true && \
     groupadd -g ${HOST_GID} user && \
@@ -40,60 +41,55 @@ USER user
 # FROM mplab-setup AS project
 FROM user-setup AS project-setup
 ARG WDIR=/fprime-zephyr-reference
-ARG GIT_BRANCH
-ARG GIT_COMMIT
 
-WORKDIR $WDIR
+WORKDIR $FSW_WDIR
 
 USER user
-RUN git clone https://github.com/ReggieMarr/fprime-zephyr-reference.git $WDIR && \
-    git fetch && \
-    git checkout $GIT_BRANCH && \
-    git reset --hard $GIT_COMMIT && \
-    git submodule update --init --depth 1 --recommend-shallow
-
-# Create virtual environment
+# Setup python virtual environment
 ENV VIRTUAL_ENV=/home/user/venv
-# USER root
-# # RUN chown -R user:user $WDIR
-
-
-# USER user
 RUN python3 -m venv $VIRTUAL_ENV
-ENV PATH="$VIRTUAL_ENV/bin:$PATH"
-# ENV PYTHONPATH="$VIRTUAL_ENV/lib/python$(python3 -c 'import sys; print(".".join(map(str, sys.version_info[:2])))')/site-packages:$PYTHONPATH"
-
-# USER root
-# # Set ownership
-# WORKDIR $WDIR
-# # RUN chown -R user:user $VIRTUAL_ENV
-# USER user
+ENV PATH="/home/user/.local/bin:$VIRTUAL_ENV/bin:$PATH"
 
 # Activate virtual environment in various shell initialization files
-RUN echo "source $VIRTUAL_ENV/bin/activate" >> ~/.bashrc && \
-    echo "source $VIRTUAL_ENV/bin/activate" >> ~/.profile
-
 # Upgrade pip in virtual environment
-RUN pip install --upgrade pip
+RUN echo "source $VIRTUAL_ENV/bin/activate" >> ~/.bashrc && \
+    echo "source $VIRTUAL_ENV/bin/activate" >> ~/.profile && \
+    pip install --upgrade pip
 
-# Install Python packages (now using pip directly in virtualenv)
-RUN pip install setuptools_scm && \
-    pip install -r $WDIR/fprime/requirements.txt
+ENV PATH="/home/user/.local/bin:${PATH}"
+
+# Set the working directory for fprime software
+WORKDIR $FSW_WDIR
+
+# Install fprime specific dev env
+RUN pip install setuptools setuptools_scm wheel pip
+
+COPY tmp_requirements.txt .
+
+RUN pip install -r tmp_requirements.txt
+
+# Remove these as they are no longer needed
+USER root
+RUN rm -f tmp_requirements.txt
+USER user
 
 FROM project-setup AS zephyr-setup
 
 # install west and leverage that to install dependencies
 RUN pip install west
 
-WORKDIR ${WDIR}/LedBlinker
+WORKDIR ${FSW_WDIR}/LedBlinker
 
-ENV ZEPHYR_BASE=${WDIR}/deps/zephyr
+ENV ZEPHYR_BASE=${FSW_WDIR}/deps/zephyr
 ENV PATH=$PATH:/home/user/zephyr-sdk-0.17.0/arm-zephyr-eabi/bin
-RUN west update
+# RUN west update
 # This can be done on main
 # RUN west packages pip --install
-RUN pip install -r ${ZEPHYR_BASE}/scripts/requirements.txt
-RUN west sdk install -t arm-zephyr-eabi
-RUN west zephyr-export
+
+COPY ./deps/zephyr/scripts/requirements.txt .
+
+RUN pip install -r requirements.txt
+# RUN west sdk install -t arm-zephyr-eabi
+# RUN west zephyr-export
 
 WORKDIR $WDIR

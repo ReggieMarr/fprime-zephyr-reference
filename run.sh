@@ -6,9 +6,13 @@ set -e
 set -o pipefail
 # set -o nounset
 
+export HOST_GID=$(id -g $(id -g -n))
+export HOST_UID=$(id -u $(whoami))
+
 export ZEPHYR_IMG_BASE=${ZEPHYR_IMG_BASE:-$ZEPHYR_URL}
 export ZEPHYR_IMG_TAG=${ZEPHYR_IMG_TAG:-fsw_$(git rev-parse --abbrev-ref HEAD | sed 's/\//_/g')}
 export ZEPHYR_IMG="$ZEPHYR_IMG_BASE:$ZEPHYR_IMG_TAG"
+DEFAULT_SVC="zephyr"
 
 check_port() {
     local port=$1
@@ -42,47 +46,115 @@ find_board_port() {
     echo "$port"
 }
 
+BRANCH_NAME=$(git rev-parse --abbrev-ref HEAD)
+
 show_help() {
-  cat << EOF
-Usage: $(basename "$0") [OPTIONS] COMMAND
+  cat <<EOF
+Usage: $(basename "$0") [OPTIONS] COMMAND [ARGS]
+
 Options:
-  --clean              Clean build
-  --daemon             Run as daemon
-  --debug              Run using gdb/gdbserver
-  --standalone         Run the command without starting any implied dependencies
-  --logs               To be used with the inspect command, just polls for logs from the assumed to be running container
-  --help               Show this help message
+  --daemon                           Run containers in detached mode (remove interactive TTY).
+  --verbose                          Run command with verbose logs enabled.
+  --debug                            Enable debug-related configurations (such as gdb).
+  --force                            Force start, run, provision, deploy ect.
+  --as-host                          Execute command on the host instead of within Docker.
+  --clean                            Force cleaning of build directories or caches
+                                     (e.g., rebuild sources from scratch).
+  --local                            Run related command in such a way that doesn't
+                                     rely on network/remote resources.
+  --host-thread-ctrl                 Enable non-sudo thread control for host execution (requires sudo)
+  --help                             Display this help message.
+
 Commands:
-  mbd-to-xml           Convert MBD to XML
-  build base           Build the base application
-  build docker         Build the Docker image
-  exec test            Run the yamcs studio editor
-  inspect              Inspect the development container
-  teardown             Tear down the environment
+  pull                               Retrieve the latest source code and docker image using ${BRANCH_NAME}.
+  push                               Update remote servers with the local code and dockerfile ${BRANCH_NAME}.
+  build <target>                     Builds a target component, specified by the second argument.
+                                     Note the following example build targets:
+                                     fsw           Build the Flight Software application
+                                     docker        Build the Docker image
+
+  exec <target>                      Executes a target inside the container specified by the second argument.
+                                     Note the following example build targets:
+                                     fsw                  Run the Flight Software application
+                                     gds                  Launch the Flight Software Ground Data System (GDS)
+                                     ut [component dir]   Leverages fprime-util generate/check to build/run
+                                                          unit tests against a specified component.
+  deploy                             Deploy a target to some execution environment.
+                                     fsw                  Deploy the Flight Software application
+                                     gds                  Deploy the Ground Data System (GDS)
+
+  log <target> <target deployment>   Displays logs for a specific target. The second argument specifies the target:
+                                     fsw                  Display logs for the Flight Software application
+                                     gds                  Display logs for the Ground Data System (GDS)
+
+  inspect                Opens an interactive shell (bash) inside the default service container.
+
+Examples:
+  "./run.sh" build fsw --clean
+  "./run.sh" exec fsw --daemon
 EOF
 }
 
-# Default values
-DEFAULT_SERVICE="zephyr"
-DEFAULT_FLAGS="-it"
-BASE_FLAGS="--rm --user $(id -u):$(id -g) --remove-orphans"
 CLEAN=0
-DEBUG=0
-STANDALONE=0
+AS_HOST=0
 DAEMON=0
-LOGS=0
+DEBUG=0
+LOCAL=0
+VERBOSE=0
+SET_THREAD_CTRL=0
+FORCE=0
 
-# Process flags
+POSITIONAL_ARGS=()
+
+# gets flags and removes them from the argument list with shift
+# positional args retains non-flag arguments
 for arg in "$@"; do
-    case $arg in
-        --daemon) DAEMON=1 ;;
-        --clean) CLEAN=1 ;;
-        --debug) DEBUG=1 ;;
-        --logs) LOGS=1 ;;
-        --standalone) STANDALONE=1 ;;
-        --help) show_help; exit 0 ;;
-    esac
+  case $arg in
+    --daemon)
+      DAEMON=1
+      shift
+      ;;
+    --verbose)
+      VERBOSE=1
+      shift
+      ;;
+    --debug)
+      DEBUG=1
+      shift
+      ;;
+    --force)
+      FORCE=1
+      shift
+      ;;
+    --as-host)
+      AS_HOST=1
+      shift
+      ;;
+    --clean)
+      CLEAN=1
+      shift
+      ;;
+    --host-thread-ctl)
+      SET_THREAD_CTRL=1
+      shift
+      ;;
+    --local)
+      LOCAL=1
+      shift
+      ;;
+    --help)
+      show_help
+      exit 0
+      ;;
+    *)
+      POSITIONAL_ARGS+=("$1") # save it in an array for later
+      shift # Remove generic argument from processing
+      ;;
+  esac
 done
+
+# restore positional parameters
+set -- "${POSITIONAL_ARGS[@]}"
 
 exec_cmd() {
     local cmd="${1}"
@@ -116,7 +188,7 @@ run_docker_compose() {
 try_docker_exec() {
     local service="$1"
     local cmd="$2"
-    local container_name="fprime-${service}"  # assuming your container naming convention
+    local container_name="devenv-${service}"  # assuming your container naming convention
     local flags="$3"
 
     # Check if container is running
@@ -145,38 +217,111 @@ try_stop_container() {
   fi
 }
 
-build_docker() {
-  if ! git diff-index --quiet HEAD --; then
-      read -p "You have unstaged changes. Continue? (y/n) " -n 1 -r
+repo_check() {
+    echo "Running repo check"
+    # Check for unstaged or uncommitted changes in the fprime submodule
+    local repo_target=$1
+    if [ -z "$repo_target" ] || [ ! -d $repo_target ]; then
+       printf "Error: Invalid submodule target: $repo_target \n"
+       exit 1;
+    fi
+    local starting_dir=$(pwd)
+
+    cd $repo_target
+    # Check if there are any modifications (unstaged/staged changes)
+    if ! git diff-index --quiet HEAD --; then
+      read -p "$repo_target has unstaged changes. Continue? (y/n) " -n 1 -r
       echo
       [[ $REPLY =~ ^[Yy]$ ]] || { echo "Build cancelled."; exit 1; }
-  fi
+    fi
 
-  # Fetch from remote to ensure we have latest refs
-  git fetch -q origin
+    # Retrieve the current commit hash in the submodule
+    local current_commit=$(git rev-parse HEAD)
 
-  # Get current commit hash
-  CURRENT_COMMIT=$(git rev-parse HEAD)
-
-  # Check if current commit exists in any remote branch
-  if ! git branch -r --contains "$CURRENT_COMMIT" | grep -q "origin/"; then
-      read -p "Current commit not found in remote repository. Continue? (y/n) " -n 1 -r
+    # Check if the commit exists on the remote by listing all remote refs and searching for the commit
+    if ! git ls-remote origin | grep -q "$current_commit"; then
+      read -p "$repo_target commit ${current_commit} not found in remote repository. Continue? (y/n) " -n 1 -r
       echo
       [[ $REPLY =~ ^[Yy]$ ]] || { echo "Build cancelled."; exit 1; }
-  fi
+    fi
 
-  CMD="docker compose --progress=plain --env-file=${SCRIPT_DIR}/.env build zephyr"
-  [ "$CLEAN" -eq 1 ] && CMD+=" --no-cache"
-  CMD+=" --build-arg GIT_COMMIT=$(git rev-parse HEAD) --build-arg GIT_BRANCH=$(git rev-parse --abbrev-ref HEAD)"
-  exec_cmd "$CMD"
+    cd $starting_dir
 }
 
-update_build_env() {
-  build_json_path=$1
+retrieve_requirements_from_remote() {
+    if ! repo_check "$SCRIPT_DIR/fprime"; then
+      printf "Failed to validate fprime submodule\n"
+      exit 1
+    fi
+    # Fetch from remote to ensure we have latest refs
+    exec_cmd "git fetch -q origin"
+    # Get current commit hash
+    local fsw_commit=$(git rev-parse HEAD)
+    printf "Retrieving fprime commit via GitHub REST API with curl...\n"
+
+    # Extract the repo owner and name from the remote URL
+    local github_baseurl="github.com"
+    local fsw_project_path=$(git remote get-url origin | sed -nE "s/.*(${github_baseurl})[:/](.*)\.git/\2/p")
+
+    # Get the submodule commit hash using the GitHub API
+    # First, we need to get the .gitmodules content to find the path to the submodule
+    local submodule_url="https://api.github.com/repos/${fsw_project_path}/contents/.gitmodules?ref=${fsw_commit}"
+    local curl_cmd="curl -s \"${submodule_url}\""
+    local gitmodules_content=$(eval $curl_cmd | jq -r '.content' | base64 -d)
+
+    # Extract the fprime submodule path and URL
+    local fprime_path=$(echo "$gitmodules_content" | grep -A3 '\[submodule "fprime"\]' | grep 'path' | cut -d'=' -f2 | tr -d ' ')
+    local fprime_url=$(echo "$gitmodules_content" | grep -A3 '\[submodule "fprime"\]' | grep 'url' | cut -d'=' -f2 | tr -d ' ')
+
+    # Get the commit hash of the submodule
+    local submodule_status_url="https://api.github.com/repos/${fsw_project_path}/contents/${fprime_path}?ref=${fsw_commit}"
+    local fprime_commit=$(curl -s "${submodule_status_url}" | jq -r '.sha')
+
+    # Extract the owner and repo name from the fprime URL
+    local fprime_project=$(echo "$fprime_url" | sed -nE "s/.*(${github_baseurl})[:/](.*)\.git/\2/p")
+
+    # Now generate a URL which requests the requirements.txt from the fprime repo
+    local requirements_url="https://api.github.com/repos/${fprime_project}/contents/requirements.txt?ref=${fprime_commit}"
+
+    # Download the requirements file
+    local cmd="curl -s \"${requirements_url}\" | jq -r '.content' | base64 -d > $SCRIPT_DIR/.tmp/fprime_requirements.txt"
+    exec_cmd "$cmd"
+}
+
+retrieve_requirements_from_local() {
+    # Alternatively we could get the submodule commit from our local copy of the
+    # fprime submodule however this would be less "purely local" so doesn't quiet match the DWIM ethos
+    requirements_dir=${1:fprime}
+    requirements_path="${SCRIPT_DIR}/${requirements_dir}/requirements.txt"
+    local cmd="cp $requirements_path $SCRIPT_DIR/.tmp/fprime_requirements.txt"
+    exec_cmd "$cmd"
+}
+
+build_docker() {
+    # Dependending on our config we either want to get the requirements url by probing remote servers
+    # or by finding the file locally
+    if [ $LOCAL -eq 1 ]; then
+      retrieve_requirements_from_local "fprime"
+    else
+      retrieve_requirements_from_remote
+    fi
+
+    local build_cmd="docker compose --progress=plain --env-file=${SCRIPT_DIR}/.env build zephyr"
+
+    [ "$CLEAN" -eq 1 ] && build_cmd+=" --no-cache"
+
+    build_cmd+=" --build-arg FSW_WDIR=${ZEPHYR_WDIR} --build-arg HOST_UID=$HOST_UID --build-arg HOST_GID=$HOST_GID"
+    exec_cmd "$build_cmd; rm -f tmp_requirements.txt"
+}
+
+container_to_host_paths() {
+  host_path=$1
+  container_path=$2
+  build_json_path=$3
   clangd_cmd="sed -i \"s|CompilationDatabase: .*|CompilationDatabase: \"${build_json_path}\"|\" .clangd"
   exec_cmd "$clangd_cmd"
 
-  mod_dict_cmd="sed -i \"s|${ZEPHYR_WDIR}|${SCRIPT_DIR}|g\" \"${build_json_path}/compile_commands.json\""
+  mod_dict_cmd="sed -i \"s|${host_path}|${container_path}|g\" \"${build_json_path}/compile_commands.json\""
 
   exec_cmd "$mod_dict_cmd"
 }
@@ -192,7 +337,7 @@ build_cmsis_st() {
     cmd="cbuild blinky.csolution.yml -d --context-set --packs --rebuild"
     try_docker_exec "zephyr" "bash -c \"$cmd\"" "$flags"
 
-    update_build_env "${SCRIPT_DIR}/${cmsis_path}/out/blinky/ZephyrV71-Xplained-Board/Debug"
+    container_to_host_path "${SCRIPT_DIR}/${cmsis_path}/out/blinky/ZephyrV71-Xplained-Board/Debug"
 }
 
 build_zephyr_st() {
@@ -206,7 +351,7 @@ build_zephyr_st() {
 
     try_docker_exec "zephyr" "bash -c \"$cmd\"" "$flags"
 
-    update_build_env "${SCRIPT_DIR}/${zephyr_path}build"
+    container_to_host_path "${SCRIPT_DIR}/${zephyr_path}build"
 }
 
 build_ledblinker() {
@@ -225,7 +370,7 @@ build_ledblinker() {
     # try_docker_exec "zephyr" "bash -c \"$cmd\"" "$flags"
     run_docker_compose "zephyr" "bash -c \"$cmd\"" "$flags"
 
-    update_build_env "${SCRIPT_DIR}/build"
+    container_to_host_path "${SCRIPT_DIR}/build"
 }
 
 case $1 in
@@ -378,7 +523,7 @@ EOF
         exit 1
       ;;
       "env")
-        update_build_env "${SCRIPT_DIR}/build"
+        container_to_host_path "${SCRIPT_DIR}/build"
       ;;
       "gds")
         #NOTE the gds port is not the debug port, if incorrectly selected the serial output will appear garbled (see exec console output)

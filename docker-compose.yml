@@ -1,5 +1,6 @@
 services:
   zephyr:
+    container_name: devenv-zephyr
     image: $ZEPHYR_IMG
     build:
       context: .
@@ -10,13 +11,12 @@ services:
       - CMAKE_COLOR_DIAGNOSTICS=ON
       - NINJA_COLOR=1
       - ZYPHYR_BASE=/fprime-zephyr-reference/deps/zephyr
-    container_name: fprime-zephyr
     network_mode: host
     volumes:
       - ./:$ZEPHYR_WDIR
 
   zephyr-tty:
-      container_name: fprime-zephyr-tty
+      container_name: devenv-zephyr-tty
       extends: zephyr
       privileged: true
       devices:
