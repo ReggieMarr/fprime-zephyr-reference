@@ -23,8 +23,6 @@ RUN userdel -r ubuntu || true && \
     useradd -u ${HOST_UID} -g ${HOST_GID} -m user && \
     echo 'user ALL=(ALL) NOPASSWD:ALL' >> /etc/sudoers
 
-RUN apt-get clean && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
-
 # USB and permissions setup
 RUN groupadd -f dialout && \
     usermod -a -G dialout user
@@ -92,3 +90,8 @@ COPY ./deps/zephyr/scripts/requirements.txt .
 # RUN west zephyr-export
 
 WORKDIR $FSW_WDIR
+
+# Remove the apt cache at the end to reduce image size
+USER root
+RUN apt-get clean && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
+USER user

@@ -4,7 +4,6 @@ cd "$SCRIPT_DIR"
 source .env
 set -e
 set -o pipefail
-# set -o nounset
 
 export HOST_GID=$(id -g $(id -g -n))
 export HOST_UID=$(id -u $(whoami))
@@ -12,7 +11,13 @@ export HOST_UID=$(id -u $(whoami))
 export ZEPHYR_IMG_BASE=${ZEPHYR_IMG_BASE:-$ZEPHYR_URL}
 export ZEPHYR_IMG_TAG=${ZEPHYR_IMG_TAG:-fsw_$(git rev-parse --abbrev-ref HEAD | sed 's/\//_/g')}
 export ZEPHYR_IMG="$ZEPHYR_IMG_BASE:$ZEPHYR_IMG_TAG"
+
+# For some commands we don't really care which service is used, for these just use "zephyr"
 DEFAULT_SVC="zephyr"
+# The base flags ensures that containers are run with the following:
+# deleted after use or exit, run the user with the id and gid of the host user
+# also remove dead containers from previous sessions (if for some reason they exist)
+BASE_FLAGS="--rm --user $(id -u):$(id -g) --remove-orphans"
 
 check_port() {
     local port=$1
@@ -56,13 +61,10 @@ Options:
   --daemon                           Run containers in detached mode (remove interactive TTY).
   --verbose                          Run command with verbose logs enabled.
   --debug                            Enable debug-related configurations (such as gdb).
-  --force                            Force start, run, provision, deploy ect.
-  --as-host                          Execute command on the host instead of within Docker.
   --clean                            Force cleaning of build directories or caches
                                      (e.g., rebuild sources from scratch).
   --local                            Run related command in such a way that doesn't
                                      rely on network/remote resources.
-  --host-thread-ctrl                 Enable non-sudo thread control for host execution (requires sudo)
   --help                             Display this help message.
 
 Commands:
@@ -77,15 +79,9 @@ Commands:
                                      Note the following example build targets:
                                      fsw                  Run the Flight Software application
                                      gds                  Launch the Flight Software Ground Data System (GDS)
-                                     ut [component dir]   Leverages fprime-util generate/check to build/run
-                                                          unit tests against a specified component.
   deploy                             Deploy a target to some execution environment.
                                      fsw                  Deploy the Flight Software application
                                      gds                  Deploy the Ground Data System (GDS)
-
-  log <target> <target deployment>   Displays logs for a specific target. The second argument specifies the target:
-                                     fsw                  Display logs for the Flight Software application
-                                     gds                  Display logs for the Ground Data System (GDS)
 
   inspect                Opens an interactive shell (bash) inside the default service container.
 
@@ -96,13 +92,10 @@ EOF
 }
 
 CLEAN=0
-AS_HOST=0
 DAEMON=0
 DEBUG=0
 LOCAL=0
 VERBOSE=0
-SET_THREAD_CTRL=0
-FORCE=0
 
 POSITIONAL_ARGS=()
 
@@ -122,20 +115,8 @@ for arg in "$@"; do
       DEBUG=1
       shift
       ;;
-    --force)
-      FORCE=1
-      shift
-      ;;
-    --as-host)
-      AS_HOST=1
-      shift
-      ;;
     --clean)
       CLEAN=1
-      shift
-      ;;
-    --host-thread-ctl)
-      SET_THREAD_CTRL=1
       shift
       ;;
     --local)
@@ -172,7 +153,7 @@ run_docker_compose() {
     local cmd="$2"
     # Always kill the container after executing the command
     # by default run the command with an interactive tty
-    local flags="$BASE_FLAGS ${3:$DEFAULT_FLAGS}"
+    local flags="$BASE_FLAGS $3"
 
     if [ "${DAEMON}" -eq "1" ]; then
         flags="${flags//-it/}"   # Remove standalone "-it"
@@ -180,9 +161,7 @@ run_docker_compose() {
         flags+=" --detach"
     fi
 
-    [ "$STANDALONE" -eq 1 ] && flags="--no-deps"
-
-    exec_cmd "docker compose run $flags $service $cmd"
+    exec_cmd "docker compose run --name devenv-$service $flags $service $cmd"
 }
 
 try_docker_exec() {
@@ -288,30 +267,74 @@ retrieve_requirements_from_remote() {
     exec_cmd "$cmd"
 }
 
+retrieve_requirements_from_zephyr() {
+    submodule=$1
+    # if ! repo_check "$SCRIPT_DIR/deps/zephyr"; then
+    #   printf "Failed to validate zephyr submodule\n"
+    #   exit 1
+    # fi
+    # Fetch from remote to ensure we have latest refs
+    exec_cmd "git fetch -q origin"
+    # Get current commit hash
+    local fsw_repo_commit=$(git rev-parse HEAD)
+    printf "Retrieving fprime commit via GitHub REST API with curl...\n"
+
+    # Extract the repo owner and name from the remote URL
+    local github_baseurl="github.com"
+    local fsw_project_path=$(git remote get-url origin | sed -nE "s/.*(${github_baseurl})[:/](.*)\.git/\2/p")
+
+    # Get the submodule commit hash using the GitHub API
+    # First, we need to get the .gitmodules content to find the path to the submodule
+    local submodule_url="https://api.github.com/repos/${fsw_project_path}/contents/.gitmodules?ref=${fsw_repo_commit}"
+    local curl_cmd="curl -s \"${submodule_url}\""
+    local gitmodules_content=$(eval $curl_cmd | jq -r '.content' | base64 -d)
+    exec_cmd "curl -s \"${submodule_url}\" | jq -r '.content'"
+
+    # # Extract the fprime submodule path and URL
+    # local submodule_path=$(echo "$gitmodules_content" | grep -A3 \"\[submodule "$submodule"\]\" | grep 'path' | cut -d'=' -f2 | tr -d ' ')
+    # local submodule_url=$(echo "$gitmodules_content" | grep -A3 \"\[submodule "$submodule"\]\" | grep 'url' | cut -d'=' -f2 | tr -d ' ')
+
+    # # Get the commit hash of the submodule
+    # local submodule_status_url="https://api.github.com/repos/${fsw_project_path}/contents/${submodule_path}?ref=${fsw_repo_commit}"
+    # local fprime_commit=$(curl -s "${submodule_status_url}" | jq -r '.sha')
+
+    # # Extract the owner and repo name from the fprime URL
+    # local fprime_project=$(echo "$fprime_url" | sed -nE "s/.*(${github_baseurl})[:/](.*)\.git/\2/p")
+
+    # # Now generate a URL which requests the requirements.txt from the fprime repo
+    # local requirements_url="https://api.github.com/repos/${fprime_project}/contents/requirements.txt?ref=${fprime_commit}"
+
+    # # Download the requirements file
+    # local cmd="curl -s \"${requirements_url}\" | jq -r '.content' | base64 -d > $SCRIPT_DIR/.tmp/fprime_requirements.txt"
+    # exec_cmd "$cmd"
+}
+
 retrieve_requirements_from_local() {
     # Alternatively we could get the submodule commit from our local copy of the
     # fprime submodule however this would be less "purely local" so doesn't quiet match the DWIM ethos
     requirements_dir=${1:fprime}
     requirements_path="${SCRIPT_DIR}/${requirements_dir}/requirements.txt"
-    local cmd="cp $requirements_path $SCRIPT_DIR/.tmp/fprime_requirements.txt"
+    local cmd="cp $requirements_path $SCRIPT_DIR/tmp_requirements.txt"
     exec_cmd "$cmd"
 }
 
 build_docker() {
+    retrieve_requirements_from_zephyr "fprime"
+
     # Dependending on our config we either want to get the requirements url by probing remote servers
     # or by finding the file locally
-    if [ $LOCAL -eq 1 ]; then
-      retrieve_requirements_from_local "fprime"
-    else
-      retrieve_requirements_from_remote
-    fi
+    # if [ $LOCAL -eq 1 ]; then
+    #   retrieve_requirements_from_local "fprime"
+    # else
+    #   retrieve_requirements_from_remote
+    # fi
 
-    local build_cmd="docker compose --progress=plain --env-file=${SCRIPT_DIR}/.env build zephyr"
+    # local build_cmd="docker compose --progress=plain --env-file=${SCRIPT_DIR}/.env build zephyr"
 
-    [ "$CLEAN" -eq 1 ] && build_cmd+=" --no-cache"
+    # [ "$CLEAN" -eq 1 ] && build_cmd+=" --no-cache"
 
-    build_cmd+=" --build-arg FSW_WDIR=${ZEPHYR_WDIR} --build-arg HOST_UID=$HOST_UID --build-arg HOST_GID=$HOST_GID"
-    exec_cmd "$build_cmd; rm -f tmp_requirements.txt"
+    # build_cmd+=" --build-arg FSW_WDIR=${ZEPHYR_WDIR} --build-arg HOST_UID=$HOST_UID --build-arg HOST_GID=$HOST_GID"
+    # exec_cmd "$build_cmd; rm -f tmp_requirements.txt"
 }
 
 container_to_host_paths() {
@@ -374,60 +397,6 @@ build_ledblinker() {
 }
 
 case $1 in
-  "format")
-    if [[ "$2" == *.fpp ]]; then
-      container_file="${2/$SCRIPT_DIR/$ZEPHYR_WDIR}"
-      echo "Formatting FPP file: $container_file"
-      cmd="fpp-format $container_file"
-      # Create a temporary marker that's unlikely to appear in normal code
-      marker="@ COMMENT_PRESERVE@"
-      # Chain the commands:
-      # 1. Transform comments to temporary annotations
-      # 2. Run fpp-format
-      # 3. Transform back to comments
-      # 4. Write back to the original file
-    tmp_file="${container_file/.fpp/_tmp.fpp}"
-
-    # Create a multi-line command with error checking
-    read -r -d '' cmd <<EOF
-    set -e  # Exit on any error
-
-    # Create backup
-    cp "$container_file" "${container_file}.bak"
-
-    # Attempt formatting pipeline
-    if sed 's/^\\([ ]*\\)#/\\1${marker}#/' "$container_file" \
-       | fpp-format \
-       | sed 's/^\\([ ]*\\)${marker}#/\\1#/' > "$tmp_file"; then
-
-        # If successful, verify tmp file exists and has content
-        if [ -s "$tmp_file" ]; then
-            mv "$tmp_file" "$container_file"
-            rm "${container_file}.bak"
-            echo "Format successful"
-        else
-            echo "Error: Formatted file is empty"
-            mv "${container_file}.bak" "$container_file"
-            exit 1
-        fi
-    else
-        echo "Error during formatting"
-        mv "${container_file}.bak" "$container_file"
-        [ -f "$tmp_file" ] && rm "$tmp_file"
-        exit 1
-    fi
-EOF
-      flags="-w $ZEPHYR_WDIR $DEFAULT_FLAGS"
-      try_docker_exec "zephyr" "$cmd" "$flags"
-    else
-      fprime_root="${2:-$SCRIPT_DIR/deps/fprime}"  # Get the path provided or use current directory
-      fprime_root="${fprime_root/$SCRIPT_DIR/$ZEPHYR_WDIR}"
-      echo "Formatting from $fprime_root"
-      cmd="git diff --name-only --relative | fprime-util format --no-backup --stdin"
-      try_docker_exec "zephyr" "bash -c \"$cmd\""
-    fi
-    ;;
-
   "build")
     EXEC_TARGET=${2:-}
     [ -z "$EXEC_TARGET" ] && { echo "Error: must specify target to exec"; exit 1; }
@@ -468,7 +437,7 @@ EOF
 
         export HOST_DEVICE_PORT=$(find_board_port) || exit 1
 
-        run_docker_compose "zephyr-tty" "bash -c \"${load_cmd}\""
+        run_docker_compose "zephyr-tty" "bash -c \"${load_cmd}\"" "it"
       ;;
       "LedBlinker")
         # Stands for cmsis smoketest
@@ -505,7 +474,7 @@ EOF
         debug_cmd="pyocd gdbserver --elf ${bin_path} -t atzephyrv71q21b"
 
         export HOST_DEVICE_PORT=$(find_board_port) || exit 1
-        run_docker_compose "zephyr-tty" "bash -c \"${debug_cmd}\""
+        run_docker_compose "zephyr-tty" "bash -c \"${debug_cmd}\"" "-it"
       ;;
       "base")
         echo "Not yet supported"
@@ -548,44 +517,35 @@ EOF
     esac
     ;;
 
-    "inspect")
-        INSPECT_TARGET=${2:-}
-        [ -z "$INSPECT_TARGET" ] && { echo "Error: must specify target to inspect"; exit 1; }
-        case $INSPECT_TARGET in
-            "wine")
-              wine_exec "bash"
-          ;;
-            "mplab")
-              # Fall through, all these case are the zephyre.
-          ;&
-            "zephyr")
-              if [ "$LOGS" -eq 1 ]; then
-                  exec_cmd "docker compose logs -f ${INSPECT_TARGET}"
-              else
-                try_docker_exec $INSPECT_TARGET "bash" "-it"
-              fi
-          ;;
-            "zephyr-tty")
-              # export HOST_DEVICE_PORT=$(find_board_port) || exit 1
-              if [ "$LOGS" -eq 1 ]; then
-                  exec_cmd "docker compose logs -f ${INSPECT_TARGET}"
-              else
-                try_docker_exec $INSPECT_TARGET "bash" "-it"
-              fi
-          ;;
-          *)
-          echo "Invalid inspect target: ${INSPECT_TARGET}"
-          exit 1
-          ;;
-        esac
+  "inspect")
+      INSPECT_TARGET=${2:-$DEFAULT_SVC}
+      case $INSPECT_TARGET in
+          "wine")
+            wine_exec "bash"
         ;;
-    "teardown")
-        echo "Tearing down services..."
-        exec_cmd "docker compose down"
+          "mplab")
+            # Fall through, all these case are the zephyre.
+        ;&
+          "zephyr")
+            try_docker_exec $INSPECT_TARGET "bash" "-it"
         ;;
-    *)
-        echo "Invalid operation. Not a valid run.sh argument."
-        show_help
+          "zephyr-tty")
+            # export HOST_DEVICE_PORT=$(find_board_port) || exit 1
+            try_docker_exec $INSPECT_TARGET "bash" "-it"
+        ;;
+        *)
+        echo "Invalid inspect target: ${INSPECT_TARGET}"
         exit 1
         ;;
+      esac
+      ;;
+  "teardown")
+      echo "Tearing down services..."
+      exec_cmd "docker compose down"
+      ;;
+  *)
+    echo "Invalid operation. Not a valid run.sh argument."
+    show_help
+    exit 1
+    ;;
 esac
