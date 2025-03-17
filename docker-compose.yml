@@ -12,8 +12,10 @@ services:
       - NINJA_COLOR=1
       - ZYPHYR_BASE=/fprime-zephyr-reference/deps/zephyr
     network_mode: host
-    volumes:
-      - ./:$ZEPHYR_WDIR
+    # volumes:
+      # - ./:$ZEPHYR_WDIR
+      # - ./west.yml:${ZEPHYR_WDIR}/west.yml
+      # - ./.west:${ZEPHYR_WDIR}/.west
 
   zephyr-tty:
       container_name: devenv-zephyr-tty

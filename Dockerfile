@@ -73,8 +73,8 @@ ENV PATH=$PATH:/home/user/zephyr-sdk-0.17.0/arm-zephyr-eabi/bin
 
 # Its unclear whether theres much advantage to be had to include the workspace
 # in the image
-# COPY .west .
-# COPY west.yml .
+COPY .west .
+COPY west.yml .
 # RUN west update -n
 
 # RUN west sdk install -t arm-zephyr-eabi

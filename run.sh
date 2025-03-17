@@ -471,7 +471,7 @@ build_docker() {
 
     # Get the requirements for our submodules
     # NOTE this could probably be expanded to retrieve more file types and loop on submodules
-    retrieve_requirements "fprime" "requirements.txt" "$temp_dir"
+    retrieve_requirements "deps/fprime" "requirements.txt" "$temp_dir"
     retrieve_requirements "deps/zephyr" "scripts/requirements.txt" "$temp_dir"
 
     # Clean up temporary directory
@@ -512,8 +512,8 @@ build_zephyr_st() {
 
 # Used as a reference for sticky build issues
 build_ledblinker_cmake() {
-    zephyr_path="build"
-    flags="-w $ZEPHYR_WDIR/$zephyr_path $DEFAULT_FLAGS"
+    exec_cmd "mkdir -p $SCRIPT_DIR/build"
+    flags="-w $ZEPHYR_WDIR/build $DEFAULT_FLAGS"
 
     sam_board_info="-DBOARD=sam_v71_xult -DBOARD_QUALIFIERS=/samv71q21b"
     gen_cmd="cmake -S ${ZEPHYR_WDIR} -GNinja -B ${ZEPHYR_WDIR}/build ${sam_board_info}"
@@ -525,26 +525,21 @@ build_ledblinker_cmake() {
 
     try_docker_exec "zephyr" "bash -c \"$cmd\"" "$flags"
 
-    container_to_host_path "${SCRIPT_DIR}/build"
+    container_to_host_paths "${ZEPHYR_WDIR}" "${SCRIPT_DIR}" "${SCRIPT_DIR}/build"
 }
 
-build_ledblinker_fprime_util() {
-    zephyr_path="build"
-    flags="-w $ZEPHYR_WDIR/$zephyr_path $DEFAULT_FLAGS"
+build_ledblinker_west() {
+    flags="-w $ZEPHYR_WDIR $DEFAULT_FLAGS"
+    exec_cmd "mkdir -p $SCRIPT_DIR/build"
 
-    sam_board_info="-DBOARD=sam_v71_xult -DBOARD_QUALIFIERS=/samv71q21b"
-    gen_cmd="cmake -S ${ZEPHYR_WDIR} -GNinja -B ${ZEPHYR_WDIR}/build ${sam_board_info}"
-    # build_cmd="cmake --build /fprime-zephyr-reference/build --target zephyr_final"
-    # this is essentially the equivalent
-    build_cmd="ninja zephyr_final"
-    cmd=$build_cmd
-    [ "$CLEAN" -eq 1 ] && cmd="rm ../build/* -rf && ${gen_cmd} && ${build_cmd}"
+    cmd="west build -b sam_v71_xult/samv71q21b -d $ZEPHYR_WDIR/build"
+    [ "$CLEAN" -eq 1 ] && cmd+="--pristine"
 
-    # cmd="ls /fprime-zephyr-reference/zephyr"
-    # try_docker_exec "zephyr" "bash -c \"$cmd\"" "$flags"
-    run_docker_compose "zephyr" "bash -c \"$cmd\"" "$flags"
+    cmd+="${ZEPHYR_WDIR}/${zephyr_path}"
 
-    container_to_host_path "${SCRIPT_DIR}/build"
+    try_docker_exec "zephyr" "bash -c \"$cmd\"" "$flags"
+
+    container_to_host_paths "${ZEPHYR_WDIR}" "${SCRIPT_DIR}" "${SCRIPT_DIR}/build"
 }
 
 case $1 in
@@ -557,17 +552,16 @@ case $1 in
         build_zephyr_st
       ;;
       "LedBlinker")
-        build_ledblinker_fprime_util
+        build_ledblinker_cmake
+      ;;
+      "LedBlinker-west")
+        build_ledblinker_west
       ;;
       "docker")
         build_docker
       ;;
-      "test")
-        echo "Not yet supported"
-        exit 1
-      ;;
       *)
-      echo "Invalid exec command: ${EXEC_TARGET}"
+      echo "Invalid build command: ${EXEC_TARGET}"
       exit 1
       ;;
     esac
@@ -614,22 +608,12 @@ case $1 in
     [ -z "$EXEC_TARGET" ] && { echo "Error: must specify target to exec"; exit 1; }
 
     case $EXEC_TARGET in
-      "keil-cfg")
-        keil_exec "uv"
-      ;;
-      "mplab-cfg")
-        mplab_exec "mplab_ide"
-      ;;
       "debug-cmsis-st")
         bin_path="./fprime-cmsis/cmake/toolchain/support/sources/zephyrv71q21b/out/blinky/ZephyrV71-Xplained-Board/Debug/blinky.elf"
         debug_cmd="pyocd gdbserver --elf ${bin_path} -t atzephyrv71q21b"
 
         export HOST_DEVICE_PORT=$(find_board_port) || exit 1
         run_docker_compose "zephyr-tty" "bash -c \"${debug_cmd}\"" "-it"
-      ;;
-      "base")
-        echo "Not yet supported"
-        exit 1
       ;;
       "console")
         #NOTE the gds port is not the debug port, if incorrectly selected the serial output will appear garbled (serial_)
@@ -641,9 +625,6 @@ case $1 in
 
         echo "Not yet supported"
         exit 1
-      ;;
-      "env")
-        container_to_host_path "${SCRIPT_DIR}/build"
       ;;
       "gds")
         #NOTE the gds port is not the debug port, if incorrectly selected the serial output will appear garbled (see exec console output)
@@ -657,10 +638,6 @@ case $1 in
         echo "Not yet supported"
         exit 1
       ;;
-      "test")
-        echo "Not yet supported"
-        exit 1
-      ;;
       *)
       echo "Invalid operation."
       exit 1
@@ -671,12 +648,6 @@ case $1 in
   "inspect")
       INSPECT_TARGET=${2:-$DEFAULT_SVC}
       case $INSPECT_TARGET in
-          "wine")
-            wine_exec "bash"
-        ;;
-          "mplab")
-            # Fall through, all these case are the zephyre.
-        ;&
           "zephyr")
             try_docker_exec $INSPECT_TARGET "bash" "-it"
         ;;
