@@ -275,7 +275,7 @@ fetch_requirements_file() {
 
 retrieve_remote_requirements() {
     local local_submodule_path=$1
-    local requirements_path=$2
+    local remote_requirements_path=$2
     local temp_dir_path=$3
 
     if ! repo_check "$local_submodule_path"; then
@@ -350,6 +350,7 @@ retrieve_remote_requirements() {
     fi
 
     # Start with the main requirements.txt file
+    echo "submodule_repo ${submodule_repo} submodule_commit: ${submodule_commit} remote_requirements_path $remote_requirements_path temp_dir_path ${temp_dir_path}"
     fetch_requirements_file "${submodule_repo}" "${submodule_commit}" "$remote_requirements_path" "${temp_dir_path}"
 
     # Check if we got any requirements
@@ -464,15 +465,13 @@ retrieve_requirements() {
 }
 
 build_docker() {
-    # local temp_dir=$(mktemp -d -p .)
-    # local temp_dir=$(mktemp -d -p .)
-    local temp_dir="tmp.Pa1iAFIXmD"
+    local temp_dir=$(mktemp -d -p .)
     local requirements_file="${temp_dir}/combined_requirements.txt"
 
     # Get the requirements for our submodules
     # NOTE this could probably be expanded to retrieve more file types and loop on submodules
     retrieve_requirements "deps/fprime" "requirements.txt" "$temp_dir"
-    retrieve_requirements "deps/zephyr" "scripts/requirements.txt" "$temp_dir"
+    # retrieve_requirements "deps/zephyr" "scripts/requirements.txt" "$temp_dir"
 
     # Clean up temporary directory
     local build_cmd="docker compose --progress=plain --env-file=${SCRIPT_DIR}/.env build zephyr"
@@ -533,9 +532,7 @@ build_ledblinker_west() {
     exec_cmd "mkdir -p $SCRIPT_DIR/build"
 
     cmd="west build -b sam_v71_xult/samv71q21b -d $ZEPHYR_WDIR/build"
-    [ "$CLEAN" -eq 1 ] && cmd+="--pristine"
-
-    cmd+="${ZEPHYR_WDIR}/${zephyr_path}"
+    [ "$CLEAN" -eq 1 ] && cmd+=" --pristine "
 
     try_docker_exec "zephyr" "bash -c \"$cmd\"" "$flags"
 
