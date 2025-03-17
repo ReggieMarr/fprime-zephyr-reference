@@ -1,9 +1,9 @@
 [submodule "fprime"]
-	path = fprime
+	path = deps/fprime
 	url = https://github.com/reggiemarr/fprime.git
 	branch = devel
 [submodule "fprime-zephyr"]
-	path = fprime-zephyr
+	path = deps/fprime-zephyr
 	url = https://github.com/reggiemarr/fprime-zephyr.git
 [submodule "deps/zephyr"]
 	path = deps/zephyr
