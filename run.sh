@@ -498,20 +498,37 @@ container_to_host_paths() {
 }
 
 build_zephyr_st() {
-    zephyr_path="zephyr-test/smoketest/"
-    flags="-w $ZEPHYR_WDIR/$zephyr_path $DEFAULT_FLAGS"
+    flags="-w $ZEPHYR_WDIR/bare-zephyr-ref $DEFAULT_FLAGS"
 
-    cmd="west build -b zephyr_v71_xult/zephyrv71q21b "
-    [ "$CLEAN" -eq 1 ] && cmd+="-t pristine -p always "
+    cmd="west build -b sam_v71_xult/samv71q21b -d $ZEPHYR_WDIR/bare-zephyr-ref/build"
+    [ "$CLEAN" -eq 1 ] && cmd+="--pristine"
 
     cmd+="${ZEPHYR_WDIR}/${zephyr_path}"
 
     try_docker_exec "zephyr" "bash -c \"$cmd\"" "$flags"
 
-    container_to_host_path "${SCRIPT_DIR}/${zephyr_path}build"
+    container_to_host_paths "${ZEPHYR_WDIR}" "${SCRIPT_DIR}" "${SCRIPT_DIR}/bare-zephyr-ref/build"
 }
 
-build_ledblinker() {
+# Used as a reference for sticky build issues
+build_ledblinker_cmake() {
+    zephyr_path="build"
+    flags="-w $ZEPHYR_WDIR/$zephyr_path $DEFAULT_FLAGS"
+
+    sam_board_info="-DBOARD=sam_v71_xult -DBOARD_QUALIFIERS=/samv71q21b"
+    gen_cmd="cmake -S ${ZEPHYR_WDIR} -GNinja -B ${ZEPHYR_WDIR}/build ${sam_board_info}"
+    # build_cmd="cmake --build /fprime-zephyr-reference/build --target zephyr_final"
+    # this is essentially the equivalent
+    build_cmd="ninja zephyr_final"
+    cmd=$build_cmd
+    [ "$CLEAN" -eq 1 ] && cmd="rm ../build/* -rf && ${gen_cmd} && ${build_cmd}"
+
+    try_docker_exec "zephyr" "bash -c \"$cmd\"" "$flags"
+
+    container_to_host_path "${SCRIPT_DIR}/build"
+}
+
+build_ledblinker_fprime_util() {
     zephyr_path="build"
     flags="-w $ZEPHYR_WDIR/$zephyr_path $DEFAULT_FLAGS"
 
@@ -540,7 +557,7 @@ case $1 in
         build_zephyr_st
       ;;
       "LedBlinker")
-        build_ledblinker
+        build_ledblinker_fprime_util
       ;;
       "docker")
         build_docker
