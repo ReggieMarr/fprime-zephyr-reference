@@ -269,44 +269,101 @@ retrieve_requirements_from_remote() {
 
 retrieve_requirements_from_zephyr() {
     submodule=$1
-    # if ! repo_check "$SCRIPT_DIR/deps/zephyr"; then
-    #   printf "Failed to validate zephyr submodule\n"
-    #   exit 1
-    # fi
     # Fetch from remote to ensure we have latest refs
     exec_cmd "git fetch -q origin"
     # Get current commit hash
     local fsw_repo_commit=$(git rev-parse HEAD)
-    printf "Retrieving fprime commit via GitHub REST API with curl...\n"
+    printf "Retrieving requirements for submodule '${submodule}' via GitHub REST API...\n"
 
     # Extract the repo owner and name from the remote URL
     local github_baseurl="github.com"
     local fsw_project_path=$(git remote get-url origin | sed -nE "s/.*(${github_baseurl})[:/](.*)\.git/\2/p")
 
-    # Get the submodule commit hash using the GitHub API
-    # First, we need to get the .gitmodules content to find the path to the submodule
+    # Debug: Check the extracted project path
+    echo "DEBUG: Project path: ${fsw_project_path}"
+
+    # Get the .gitmodules content
     local submodule_url="https://api.github.com/repos/${fsw_project_path}/contents/.gitmodules?ref=${fsw_repo_commit}"
-    local curl_cmd="curl -s \"${submodule_url}\""
-    local gitmodules_content=$(eval $curl_cmd | jq -r '.content' | base64 -d)
-    exec_cmd "curl -s \"${submodule_url}\" | jq -r '.content'"
+    echo "DEBUG: Submodule URL: ${submodule_url}"
 
-    # # Extract the fprime submodule path and URL
-    # local submodule_path=$(echo "$gitmodules_content" | grep -A3 \"\[submodule "$submodule"\]\" | grep 'path' | cut -d'=' -f2 | tr -d ' ')
-    # local submodule_url=$(echo "$gitmodules_content" | grep -A3 \"\[submodule "$submodule"\]\" | grep 'url' | cut -d'=' -f2 | tr -d ' ')
+    # Save the raw response to examine it
+    local raw_response="/tmp/github_response.json"
+    exec_cmd "curl -s \"${submodule_url}\" > ${raw_response}"
 
-    # # Get the commit hash of the submodule
-    # local submodule_status_url="https://api.github.com/repos/${fsw_project_path}/contents/${submodule_path}?ref=${fsw_repo_commit}"
-    # local fprime_commit=$(curl -s "${submodule_status_url}" | jq -r '.sha')
+    # Check if the response contains an error
+    local error_message=$(jq -r '.message // empty' ${raw_response})
+    if [ ! -z "$error_message" ]; then
+        echo "DEBUG: GitHub API Error: ${error_message}"
+        echo "DEBUG: Full response:"
+        cat ${raw_response}
+        return 1
+    fi
 
-    # # Extract the owner and repo name from the fprime URL
-    # local fprime_project=$(echo "$fprime_url" | sed -nE "s/.*(${github_baseurl})[:/](.*)\.git/\2/p")
+    # If we got here, we should have a valid response
+    local gitmodules_content=$(jq -r '.content // "No content field found"' ${raw_response} | base64 -d 2>/dev/null || echo "Failed to decode base64 content")
 
-    # # Now generate a URL which requests the requirements.txt from the fprime repo
-    # local requirements_url="https://api.github.com/repos/${fprime_project}/contents/requirements.txt?ref=${fprime_commit}"
+    echo "DEBUG: .gitmodules content:"
+    echo "${gitmodules_content}"
 
-    # # Download the requirements file
-    # local cmd="curl -s \"${requirements_url}\" | jq -r '.content' | base64 -d > $SCRIPT_DIR/.tmp/fprime_requirements.txt"
-    # exec_cmd "$cmd"
+    # Extract the specific submodule information
+    local submodule_section=$(echo "${gitmodules_content}" | grep -A3 "\[submodule \"${submodule}\"\]" || echo "Submodule section not found")
+    echo "DEBUG: Submodule section for '${submodule}':"
+    echo "${submodule_section}"
+
+    if [ -z "${submodule_section}" ] || [ "${submodule_section}" == "Submodule section not found" ]; then
+        echo "ERROR: Submodule '${submodule}' not found in .gitmodules"
+        return 1
+    fi
+
+    # Extract the submodule path and URL
+    local submodule_path=$(echo "$submodule_section" | grep 'path' | cut -d'=' -f2 | tr -d ' ')
+    local submodule_url=$(echo "$submodule_section" | grep 'url' | cut -d'=' -f2 | tr -d ' ')
+
+    echo "DEBUG: Submodule path: ${submodule_path}"
+    echo "DEBUG: Submodule URL: ${submodule_url}"
+
+    # Get the commit hash of the submodule
+    local submodule_status_url="https://api.github.com/repos/${fsw_project_path}/contents/${submodule_path}?ref=${fsw_repo_commit}"
+    echo "DEBUG: Submodule status URL: ${submodule_status_url}"
+
+    exec_cmd "curl -s \"${submodule_status_url}\" > ${raw_response}"
+    local status_error=$(jq -r '.message // empty' ${raw_response})
+    if [ ! -z "$status_error" ]; then
+        echo "DEBUG: GitHub API Error for submodule status: ${status_error}"
+        return 1
+    fi
+
+    local submodule_commit=$(jq -r '.sha // "No SHA found"' ${raw_response})
+    echo "DEBUG: Submodule commit: ${submodule_commit}"
+
+    # Extract the owner and repo name from the submodule URL
+    local submodule_repo=$(echo "$submodule_url" | sed -nE "s/.*(${github_baseurl})[:/](.*)\.git/\2/p")
+    echo "DEBUG: Submodule repo: ${submodule_repo}"
+
+    # Now generate a URL which requests the requirements.txt from the submodule repo
+    local requirements_url="https://api.github.com/repos/${submodule_repo}/contents/requirements.txt?ref=${submodule_commit}"
+    echo "DEBUG: Requirements URL: ${requirements_url}"
+
+    # Download the requirements file
+    exec_cmd "curl -s \"${requirements_url}\" > ${raw_response}"
+    local req_error=$(jq -r '.message // empty' ${raw_response})
+    if [ ! -z "$req_error" ]; then
+        echo "DEBUG: GitHub API Error for requirements.txt: ${req_error}"
+        return 1
+    fi
+
+    # Extract and decode the content
+    local requirements_content=$(jq -r '.content // "No content field found"' ${raw_response} | base64 -d 2>/dev/null || echo "Failed to decode base64 content")
+    echo "DEBUG: Requirements content:"
+    echo "${requirements_content}"
+
+    # Save to file if all went well
+    if [ "${requirements_content}" != "No content field found" ] && [ "${requirements_content}" != "Failed to decode base64 content" ]; then
+        echo "${requirements_content}" > "tmp_${submodule}_requirements.txt"
+        echo "Requirements for ${submodule} saved to tmp_${submodule}_requirements.txt"
+    else
+        echo "ERROR: Failed to retrieve requirements.txt for ${submodule}"
+    fi
 }
 
 retrieve_requirements_from_local() {
@@ -319,7 +376,7 @@ retrieve_requirements_from_local() {
 }
 
 build_docker() {
-    retrieve_requirements_from_zephyr "fprime"
+    retrieve_requirements_from_zephyr "deps/zephyr"
 
     # Dependending on our config we either want to get the requirements url by probing remote servers
     # or by finding the file locally
