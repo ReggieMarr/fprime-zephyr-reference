@@ -288,7 +288,7 @@ retrieve_requirements_from_zephyr() {
 
     # Save the raw response to examine it
     local raw_response="/tmp/github_response.json"
-    exec_cmd "curl -s \"${submodule_url}\" > ${raw_response}"
+    exec_cmd "curl -s -L \"${submodule_url}\" > ${raw_response}"
 
     # Check if the response contains an error
     local error_message=$(jq -r '.message // empty' ${raw_response})
