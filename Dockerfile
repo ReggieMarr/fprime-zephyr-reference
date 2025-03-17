@@ -23,8 +23,6 @@ RUN userdel -r ubuntu || true && \
     useradd -u ${HOST_UID} -g ${HOST_GID} -m user && \
     echo 'user ALL=(ALL) NOPASSWD:ALL' >> /etc/sudoers
 
-RUN apt-get clean && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
-
 # USB and permissions setup
 RUN groupadd -f dialout && \
     usermod -a -G dialout user
@@ -33,13 +31,12 @@ RUN groupadd -f dialout && \
 RUN sudo chown user:dialout /dev/tty* || true
 
 RUN usermod -a -G plugdev,dialout user
+# This seemed to be required in some cases for openocd loading
 RUN service udev restart || true
 
 USER user
 
-# # Final layer with project setup
-# FROM mplab-setup AS project
-FROM user-setup AS project-setup
+FROM user-setup AS python-setup
 
 WORKDIR $FSW_WDIR
 
@@ -53,42 +50,37 @@ ENV PATH="/home/user/.local/bin:$VIRTUAL_ENV/bin:$PATH"
 # Upgrade pip in virtual environment
 RUN echo "source $VIRTUAL_ENV/bin/activate" >> ~/.bashrc && \
     echo "source $VIRTUAL_ENV/bin/activate" >> ~/.profile && \
-    pip install --upgrade pip
+    pip install --upgrade pip wheel
 
 ENV PATH="/home/user/.local/bin:${PATH}"
 
-# Set the working directory for fprime software
+# Path variable to the requirements.txt which specifies Fprime's python deps
+ARG REQUIREMENTS_FILE
+COPY $REQUIREMENTS_FILE .
+
+# install the deps and remove after use
+RUN pip install -r combined_requirements.txt && rm -f $REQUIREMENTS_FILE
+
+# NOTE for zephyr deps, the latest branch supports this instead of a requirements.txt file
+# RUN pip install west && west packages pip --install
+
+FROM python-setup AS west-setup
+
 WORKDIR $FSW_WDIR
-
-# Install fprime specific dev env
-RUN pip install setuptools setuptools_scm wheel pip
-
-COPY tmp_requirements.txt .
-
-RUN pip install -r tmp_requirements.txt
-
-# Remove these as they are no longer needed
-USER root
-RUN rm -f tmp_requirements.txt
-USER user
-
-FROM project-setup AS zephyr-setup
-
-# install west and leverage that to install dependencies
-RUN pip install west
-
-WORKDIR ${FSW_WDIR}/LedBlinker
 
 ENV ZEPHYR_BASE=${FSW_WDIR}/deps/zephyr
 ENV PATH=$PATH:/home/user/zephyr-sdk-0.17.0/arm-zephyr-eabi/bin
-# RUN west update
-# This can be done on main
-# RUN west packages pip --install
 
-COPY ./deps/zephyr/scripts/requirements.txt .
+# Its unclear whether theres much advantage to be had to include the workspace
+# in the image
+# COPY .west .
+# COPY west.yml .
+# RUN west update -n
 
-# RUN pip install -r requirements.txt
 # RUN west sdk install -t arm-zephyr-eabi
 # RUN west zephyr-export
 
-WORKDIR $FSW_WDIR
+# Remove the apt cache at the end to reduce image size
+USER root
+RUN apt-get clean && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
+USER user

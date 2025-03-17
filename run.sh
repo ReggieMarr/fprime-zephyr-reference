@@ -4,7 +4,6 @@ cd "$SCRIPT_DIR"
 source .env
 set -e
 set -o pipefail
-# set -o nounset
 
 export HOST_GID=$(id -g $(id -g -n))
 export HOST_UID=$(id -u $(whoami))
@@ -12,7 +11,13 @@ export HOST_UID=$(id -u $(whoami))
 export ZEPHYR_IMG_BASE=${ZEPHYR_IMG_BASE:-$ZEPHYR_URL}
 export ZEPHYR_IMG_TAG=${ZEPHYR_IMG_TAG:-fsw_$(git rev-parse --abbrev-ref HEAD | sed 's/\//_/g')}
 export ZEPHYR_IMG="$ZEPHYR_IMG_BASE:$ZEPHYR_IMG_TAG"
+
+# For some commands we don't really care which service is used, for these just use "zephyr"
 DEFAULT_SVC="zephyr"
+# The base flags ensures that containers are run with the following:
+# deleted after use or exit, run the user with the id and gid of the host user
+# also remove dead containers from previous sessions (if for some reason they exist)
+BASE_FLAGS="--rm --user $(id -u):$(id -g) --remove-orphans"
 
 check_port() {
     local port=$1
@@ -56,13 +61,10 @@ Options:
   --daemon                           Run containers in detached mode (remove interactive TTY).
   --verbose                          Run command with verbose logs enabled.
   --debug                            Enable debug-related configurations (such as gdb).
-  --force                            Force start, run, provision, deploy ect.
-  --as-host                          Execute command on the host instead of within Docker.
   --clean                            Force cleaning of build directories or caches
                                      (e.g., rebuild sources from scratch).
   --local                            Run related command in such a way that doesn't
                                      rely on network/remote resources.
-  --host-thread-ctrl                 Enable non-sudo thread control for host execution (requires sudo)
   --help                             Display this help message.
 
 Commands:
@@ -77,15 +79,9 @@ Commands:
                                      Note the following example build targets:
                                      fsw                  Run the Flight Software application
                                      gds                  Launch the Flight Software Ground Data System (GDS)
-                                     ut [component dir]   Leverages fprime-util generate/check to build/run
-                                                          unit tests against a specified component.
   deploy                             Deploy a target to some execution environment.
                                      fsw                  Deploy the Flight Software application
                                      gds                  Deploy the Ground Data System (GDS)
-
-  log <target> <target deployment>   Displays logs for a specific target. The second argument specifies the target:
-                                     fsw                  Display logs for the Flight Software application
-                                     gds                  Display logs for the Ground Data System (GDS)
 
   inspect                Opens an interactive shell (bash) inside the default service container.
 
@@ -96,13 +92,10 @@ EOF
 }
 
 CLEAN=0
-AS_HOST=0
 DAEMON=0
 DEBUG=0
 LOCAL=0
 VERBOSE=0
-SET_THREAD_CTRL=0
-FORCE=0
 
 POSITIONAL_ARGS=()
 
@@ -122,20 +115,8 @@ for arg in "$@"; do
       DEBUG=1
       shift
       ;;
-    --force)
-      FORCE=1
-      shift
-      ;;
-    --as-host)
-      AS_HOST=1
-      shift
-      ;;
     --clean)
       CLEAN=1
-      shift
-      ;;
-    --host-thread-ctl)
-      SET_THREAD_CTRL=1
       shift
       ;;
     --local)
@@ -172,7 +153,7 @@ run_docker_compose() {
     local cmd="$2"
     # Always kill the container after executing the command
     # by default run the command with an interactive tty
-    local flags="$BASE_FLAGS ${3:$DEFAULT_FLAGS}"
+    local flags="$BASE_FLAGS $3"
 
     if [ "${DAEMON}" -eq "1" ]; then
         flags="${flags//-it/}"   # Remove standalone "-it"
@@ -180,9 +161,7 @@ run_docker_compose() {
         flags+=" --detach"
     fi
 
-    [ "$STANDALONE" -eq 1 ] && flags="--no-deps"
-
-    exec_cmd "docker compose run $flags $service $cmd"
+    exec_cmd "docker compose run --name devenv-$service $flags $service $cmd"
 }
 
 try_docker_exec() {
@@ -248,70 +227,262 @@ repo_check() {
     cd $starting_dir
 }
 
-retrieve_requirements_from_remote() {
-    if ! repo_check "$SCRIPT_DIR/fprime"; then
+fetch_requirements_file() {
+    local repo=$1
+    local commit=$2
+    local file_path=$3
+    local temp_dir=$4
+
+    echo "Fetching requirements file: $file_path"
+
+    # Generate URL for the requirements file
+    local req_url="https://api.github.com/repos/${repo}/contents/${file_path}?ref=${commit}"
+
+    # Create a unique name for this response file
+    local req_response="${temp_dir}/$(basename ${file_path}).json"
+
+    # Fetch the file
+    exec_cmd "curl -s -L \"${req_url}\" > \"${req_response}\""
+
+    # Check for errors
+    local file_error=$(jq -r '.message // empty' "${req_response}")
+    if [ ! -z "$file_error" ]; then
+        echo "WARNING: Could not fetch ${file_path}: ${file_error}"
+        return 1
+    fi
+
+    # Decode the content
+    local file_content=$(jq -r '.content // "No content found"' "${req_response}" | base64 -d 2>/dev/null)
+
+    # Process each line of the requirements file
+    while IFS= read -r line; do
+        # Check if this line is a reference to another requirements file
+        if [[ "$line" =~ ^-r[[:space:]]+([^[:space:]]+) ]]; then
+            # Extract the referenced file path
+            local ref_file="${BASH_REMATCH[1]}"
+            # Get the directory of the current file
+            local current_dir=$(dirname "$file_path")
+            # Construct the full path to the referenced file
+            local ref_path="${current_dir}/${ref_file}"
+            # Recursively fetch the referenced file
+            fetch_requirements_file "$repo" "$commit" "$ref_path" "$temp_dir"
+        else
+            # If it's a normal requirement line, output it
+            echo "$line" >> "${temp_dir}/combined_requirements.txt"
+        fi
+    done <<< "$file_content"
+}
+
+retrieve_remote_requirements() {
+    local local_submodule_path=$1
+    local requirements_path=$2
+    local temp_dir_path=$3
+
+    if ! repo_check "$local_submodule_path"; then
       printf "Failed to validate fprime submodule\n"
       exit 1
     fi
+
     # Fetch from remote to ensure we have latest refs
     exec_cmd "git fetch -q origin"
     # Get current commit hash
-    local fsw_commit=$(git rev-parse HEAD)
-    printf "Retrieving fprime commit via GitHub REST API with curl...\n"
+    local fsw_repo_commit=$(git rev-parse HEAD)
+    printf "Retrieving requirements for submodule '${local_submodule_path}' via GitHub REST API...\n"
 
     # Extract the repo owner and name from the remote URL
     local github_baseurl="github.com"
     local fsw_project_path=$(git remote get-url origin | sed -nE "s/.*(${github_baseurl})[:/](.*)\.git/\2/p")
 
-    # Get the submodule commit hash using the GitHub API
-    # First, we need to get the .gitmodules content to find the path to the submodule
-    local submodule_url="https://api.github.com/repos/${fsw_project_path}/contents/.gitmodules?ref=${fsw_commit}"
-    local curl_cmd="curl -s \"${submodule_url}\""
-    local gitmodules_content=$(eval $curl_cmd | jq -r '.content' | base64 -d)
+    # Get the .gitmodules content - add -L flag to follow redirects
+    local submodule_url="https://api.github.com/repos/${fsw_project_path}/contents/.gitmodules?ref=${fsw_repo_commit}"
 
-    # Extract the fprime submodule path and URL
-    local fprime_path=$(echo "$gitmodules_content" | grep -A3 '\[submodule "fprime"\]' | grep 'path' | cut -d'=' -f2 | tr -d ' ')
-    local fprime_url=$(echo "$gitmodules_content" | grep -A3 '\[submodule "fprime"\]' | grep 'url' | cut -d'=' -f2 | tr -d ' ')
+    # Save the raw response, using -L to follow redirects
+    local raw_response="/tmp/github_response.json"
+    exec_cmd "curl -s -L \"${submodule_url}\" > ${raw_response}"
+
+    # Check if the response still contains an error
+    local error_message=$(jq -r '.message // empty' ${raw_response})
+    if [ ! -z "$error_message" ]; then
+        echo "ERROR: GitHub API Error: ${error_message}"
+        return 1
+    fi
+
+    local gitmodules_content=$(jq -r '.content // "No content field found"' ${raw_response} | base64 -d 2>/dev/null || echo "Failed to decode base64 content")
+
+    # Extract the specific submodule information
+    local submodule_section=$(echo "${gitmodules_content}" | grep -A3 "\[submodule \"${local_submodule_path}\"\]" || echo "")
+
+    # Try looking for the path part without the full submodule name
+    local submodule_base=$(basename "$local_submodule_path")
+    if [ -z "${submodule_section}" ]; then
+        submodule_section=$(echo "${gitmodules_content}" | grep -A3 "\[submodule \"${submodule_base}\"\]" || echo "")
+
+        if [ -z "${submodule_section}" ]; then
+            echo "ERROR: Submodule '${local_submodule_path}' or '${submodule_base}' not found in .gitmodules"
+            return 1
+        fi
+    fi
+
+    # Extract the submodule path and URL
+    local remote_submodule_path=$(echo "$submodule_section" | grep 'path' | cut -d'=' -f2 | tr -d ' ')
+    local submodule_url=$(echo "$submodule_section" | grep 'url' | cut -d'=' -f2 | tr -d ' ')
 
     # Get the commit hash of the submodule
-    local submodule_status_url="https://api.github.com/repos/${fsw_project_path}/contents/${fprime_path}?ref=${fsw_commit}"
-    local fprime_commit=$(curl -s "${submodule_status_url}" | jq -r '.sha')
+    local submodule_status_url="https://api.github.com/repos/${fsw_project_path}/contents/${remote_submodule_path}?ref=${fsw_repo_commit}"
 
-    # Extract the owner and repo name from the fprime URL
-    local fprime_project=$(echo "$fprime_url" | sed -nE "s/.*(${github_baseurl})[:/](.*)\.git/\2/p")
+    exec_cmd "curl -s -L \"${submodule_status_url}\" > ${raw_response}"
+    local status_error=$(jq -r '.message // empty' ${raw_response})
+    if [ ! -z "$status_error" ]; then
+        echo "ERROR: GitHub API Error for submodule status: ${status_error}"
+        return 1
+    fi
 
-    # Now generate a URL which requests the requirements.txt from the fprime repo
-    local requirements_url="https://api.github.com/repos/${fprime_project}/contents/requirements.txt?ref=${fprime_commit}"
+    local submodule_commit=$(jq -r '.sha // "No SHA found"' ${raw_response})
 
-    # Download the requirements file
-    local cmd="curl -s \"${requirements_url}\" | jq -r '.content' | base64 -d > $SCRIPT_DIR/.tmp/fprime_requirements.txt"
-    exec_cmd "$cmd"
+    # Extract the owner and repo name from the submodule URL
+    echo "DEBUG: Submodule url: ${submodule_url}"
+    local ssh_regex="s/.*(${github_baseurl})[:/](.*)\.git/\2/p"
+    local https_regex="s/.*(${github_baseurl})[:/](.*)$/\2/p"
+    local submodule_repo=$(echo "$submodule_url" | sed -nE "$ssh_regex")
+    # If we didn't get a submodule_repo yet we probably have a https not ssh submodule url
+    if [ -z $submodule_repo ]; then
+      submodule_repo=$(echo "$submodule_url" | sed -nE "$https_regex")
+    fi
+
+    # Start with the main requirements.txt file
+    fetch_requirements_file "${submodule_repo}" "${submodule_commit}" "$remote_requirements_path" "${temp_dir_path}"
+
+    # Check if we got any requirements
+    echo "temp path $temp_dir_path"
+    if [ -f "${temp_dir_path}/combined_requirements.txt" ]; then
+        # Sort and remove duplicates
+        # NOTE we could make a requirements.txt per project but this seems simpler
+        # sort -u "${temp_dir_path}/combined_requirements.txt" > "tmp_${submodule_base}_requirements.txt"
+        # echo "Combined requirements for ${local_submodule_path} saved to tmp_${submodule_base}_requirements.txt"
+        echo "Saving requirements for ${local_submodule_path} to combined_requirements.txt"
+        sort_cmd="sort -u \"${temp_dir_path}/combined_requirements.txt\" > \"combined_requirements.txt\""
+        exec_cmd "$sort_cmd"
+    else
+        echo "No requirements files were successfully fetched."
+        return 1
+    fi
 }
 
-retrieve_requirements_from_local() {
-    # Alternatively we could get the submodule commit from our local copy of the
-    # fprime submodule however this would be less "purely local" so doesn't quiet match the DWIM ethos
-    requirements_dir=${1:fprime}
-    requirements_path="${SCRIPT_DIR}/${requirements_dir}/requirements.txt"
-    local cmd="cp $requirements_path $SCRIPT_DIR/.tmp/fprime_requirements.txt"
-    exec_cmd "$cmd"
+process_local_requirements_file() {
+    local file_path=$1
+    local temp_dir=$2
+
+    echo "Processing local requirements file: ${file_path}"
+
+    # Check if the file exists
+    if [ ! -f "${file_path}" ]; then
+        echo "WARNING: Could not find referenced requirements file: ${file_path}"
+        return 1
+    fi
+
+    # Process each line of the requirements file
+    while IFS= read -r line || [ -n "$line" ]; do
+        # Skip empty lines or comments
+        if [[ -z "$line" || "$line" =~ ^[[:space:]]*# ]]; then
+            continue
+        fi
+
+        # Check if this line is a reference to another requirements file
+        if [[ "$line" =~ ^-r[[:space:]]+([^[:space:]]+) ]]; then
+            # Extract the referenced file path
+            local ref_file="${BASH_REMATCH[1]}"
+            # Get the directory of the current file
+            local current_dir=$(dirname "$file_path")
+            # Construct the full path to the referenced file
+            local ref_path="${current_dir}/${ref_file}"
+
+            # Recursively process the referenced file
+            process_local_requirements_file "$ref_path" "$temp_dir"
+        else
+            # If it's a normal requirement line, output it
+            echo "$line" >> "${temp_dir}/combined_requirements.txt"
+        fi
+    done < "$file_path"
 }
 
-build_docker() {
+retrieve_local_requirements() {
+    local local_submodule_path=$1
+    local requirements_path=$2
+    local temp_dir_path=$3
+
+    echo "Retrieving requirements from local path: ${local_submodule_path}/${requirements_path}"
+
+    # The complete path to the requirements file
+    local full_requirements_path="${SCRIPT_DIR}/${local_submodule_path}/${requirements_path}"
+
+    # Check if the file exists
+    if [ ! -f "${full_requirements_path}" ]; then
+        echo "ERROR: Requirements file not found at ${full_requirements_path}"
+        return 1
+    fi
+
+    if [ $CLEAN -eq 1 ]; then
+      exec_cmd "rm -f ${temp_dir_path}/combined_requirements.txt"
+    fi
+
+    exec_cmd "touch ${temp_dir_path}/combined_requirements.txt"
+
+    # Start processing with the main requirements file
+    process_local_requirements_file "${full_requirements_path}" "${temp_dir_path}"
+
+    # Check if we got any requirements
+    if [ -f "${temp_dir_path}/combined_requirements.txt" ]; then
+        # Sort and remove duplicates
+        # Note: Since the remote function is already handling the final sorting and saving,
+        # we'll just ensure the combined file exists and is ready for that step
+        echo "Successfully processed local requirements for ${local_submodule_path}/${requirements_path}"
+
+        # Sort and save directly to combined_requirements.txt if needed
+        sort_cmd="sort -u \"${temp_dir_path}/combined_requirements.txt\" > \"combined_requirements.txt\""
+        exec_cmd "$sort_cmd"
+    else
+        echo "No requirements were successfully processed."
+        return 1
+    fi
+}
+
+retrieve_requirements() {
+    local local_submodule_path=$1
+    local requirements_path=$2
+    local temp_dir_path=$3
+    if [ -z $local_submodule_path ] || [ -z $requirements_path ] || [ -z $temp_dir_path ]; then
+      printf "Error! to retrieve requirements we need the local_submodule_path, remote_requirements_path, and temp_dir_path!\n"
+    fi
+
     # Dependending on our config we either want to get the requirements url by probing remote servers
     # or by finding the file locally
     if [ $LOCAL -eq 1 ]; then
-      retrieve_requirements_from_local "fprime"
+      retrieve_local_requirements "$local_submodule_path" "$requirements_path" "$temp_dir_path"
     else
-      retrieve_requirements_from_remote
+      retrieve_remote_requirements "$local_submodule_path" "$requirements_path" "$temp_dir_path"
     fi
+}
 
+build_docker() {
+    # local temp_dir=$(mktemp -d -p .)
+    # local temp_dir=$(mktemp -d -p .)
+    local temp_dir="tmp.Pa1iAFIXmD"
+    local requirements_file="${temp_dir}/combined_requirements.txt"
+
+    # Get the requirements for our submodules
+    # NOTE this could probably be expanded to retrieve more file types and loop on submodules
+    retrieve_requirements "fprime" "requirements.txt" "$temp_dir"
+    retrieve_requirements "deps/zephyr" "scripts/requirements.txt" "$temp_dir"
+
+    # Clean up temporary directory
     local build_cmd="docker compose --progress=plain --env-file=${SCRIPT_DIR}/.env build zephyr"
 
     [ "$CLEAN" -eq 1 ] && build_cmd+=" --no-cache"
 
     build_cmd+=" --build-arg FSW_WDIR=${ZEPHYR_WDIR} --build-arg HOST_UID=$HOST_UID --build-arg HOST_GID=$HOST_GID"
-    exec_cmd "$build_cmd; rm -f tmp_requirements.txt"
+    build_cmd+=" --build-arg REQUIREMENTS_FILE=${requirements_file}"
+    build_cmd+="; rm -rf ${requirements_file}"
+    exec_cmd "$build_cmd"
 }
 
 container_to_host_paths() {
@@ -324,20 +495,6 @@ container_to_host_paths() {
   mod_dict_cmd="sed -i \"s|${host_path}|${container_path}|g\" \"${build_json_path}/compile_commands.json\""
 
   exec_cmd "$mod_dict_cmd"
-}
-
-build_cmsis_st() {
-    cmsis_path="fprime-cmsis/cmake/toolchain/support/sources/zephyrv71q21b"
-    flags="-w $ZEPHYR_WDIR/$cmsis_path $DEFAULT_FLAGS"
-    # NOTE we often get stuck on trivial schema errors.
-    # prevent this with -n
-    # cmd="csolution -v -d convert blinky.csolution.yml"
-    # cmd="cbuild -v -p blinky.csolution.yml"
-    # cmd="cbuild setup blinky.csolution.yml --context-set"
-    cmd="cbuild blinky.csolution.yml -d --context-set --packs --rebuild"
-    try_docker_exec "zephyr" "bash -c \"$cmd\"" "$flags"
-
-    container_to_host_path "${SCRIPT_DIR}/${cmsis_path}/out/blinky/ZephyrV71-Xplained-Board/Debug"
 }
 
 build_zephyr_st() {
@@ -374,60 +531,6 @@ build_ledblinker() {
 }
 
 case $1 in
-  "format")
-    if [[ "$2" == *.fpp ]]; then
-      container_file="${2/$SCRIPT_DIR/$ZEPHYR_WDIR}"
-      echo "Formatting FPP file: $container_file"
-      cmd="fpp-format $container_file"
-      # Create a temporary marker that's unlikely to appear in normal code
-      marker="@ COMMENT_PRESERVE@"
-      # Chain the commands:
-      # 1. Transform comments to temporary annotations
-      # 2. Run fpp-format
-      # 3. Transform back to comments
-      # 4. Write back to the original file
-    tmp_file="${container_file/.fpp/_tmp.fpp}"
-
-    # Create a multi-line command with error checking
-    read -r -d '' cmd <<EOF
-    set -e  # Exit on any error
-
-    # Create backup
-    cp "$container_file" "${container_file}.bak"
-
-    # Attempt formatting pipeline
-    if sed 's/^\\([ ]*\\)#/\\1${marker}#/' "$container_file" \
-       | fpp-format \
-       | sed 's/^\\([ ]*\\)${marker}#/\\1#/' > "$tmp_file"; then
-
-        # If successful, verify tmp file exists and has content
-        if [ -s "$tmp_file" ]; then
-            mv "$tmp_file" "$container_file"
-            rm "${container_file}.bak"
-            echo "Format successful"
-        else
-            echo "Error: Formatted file is empty"
-            mv "${container_file}.bak" "$container_file"
-            exit 1
-        fi
-    else
-        echo "Error during formatting"
-        mv "${container_file}.bak" "$container_file"
-        [ -f "$tmp_file" ] && rm "$tmp_file"
-        exit 1
-    fi
-EOF
-      flags="-w $ZEPHYR_WDIR $DEFAULT_FLAGS"
-      try_docker_exec "zephyr" "$cmd" "$flags"
-    else
-      fprime_root="${2:-$SCRIPT_DIR/deps/fprime}"  # Get the path provided or use current directory
-      fprime_root="${fprime_root/$SCRIPT_DIR/$ZEPHYR_WDIR}"
-      echo "Formatting from $fprime_root"
-      cmd="git diff --name-only --relative | fprime-util format --no-backup --stdin"
-      try_docker_exec "zephyr" "bash -c \"$cmd\""
-    fi
-    ;;
-
   "build")
     EXEC_TARGET=${2:-}
     [ -z "$EXEC_TARGET" ] && { echo "Error: must specify target to exec"; exit 1; }
@@ -468,7 +571,7 @@ EOF
 
         export HOST_DEVICE_PORT=$(find_board_port) || exit 1
 
-        run_docker_compose "zephyr-tty" "bash -c \"${load_cmd}\""
+        run_docker_compose "zephyr-tty" "bash -c \"${load_cmd}\"" "it"
       ;;
       "LedBlinker")
         # Stands for cmsis smoketest
@@ -505,7 +608,7 @@ EOF
         debug_cmd="pyocd gdbserver --elf ${bin_path} -t atzephyrv71q21b"
 
         export HOST_DEVICE_PORT=$(find_board_port) || exit 1
-        run_docker_compose "zephyr-tty" "bash -c \"${debug_cmd}\""
+        run_docker_compose "zephyr-tty" "bash -c \"${debug_cmd}\"" "-it"
       ;;
       "base")
         echo "Not yet supported"
@@ -548,44 +651,35 @@ EOF
     esac
     ;;
 
-    "inspect")
-        INSPECT_TARGET=${2:-}
-        [ -z "$INSPECT_TARGET" ] && { echo "Error: must specify target to inspect"; exit 1; }
-        case $INSPECT_TARGET in
-            "wine")
-              wine_exec "bash"
-          ;;
-            "mplab")
-              # Fall through, all these case are the zephyre.
-          ;&
-            "zephyr")
-              if [ "$LOGS" -eq 1 ]; then
-                  exec_cmd "docker compose logs -f ${INSPECT_TARGET}"
-              else
-                try_docker_exec $INSPECT_TARGET "bash" "-it"
-              fi
-          ;;
-            "zephyr-tty")
-              # export HOST_DEVICE_PORT=$(find_board_port) || exit 1
-              if [ "$LOGS" -eq 1 ]; then
-                  exec_cmd "docker compose logs -f ${INSPECT_TARGET}"
-              else
-                try_docker_exec $INSPECT_TARGET "bash" "-it"
-              fi
-          ;;
-          *)
-          echo "Invalid inspect target: ${INSPECT_TARGET}"
-          exit 1
-          ;;
-        esac
+  "inspect")
+      INSPECT_TARGET=${2:-$DEFAULT_SVC}
+      case $INSPECT_TARGET in
+          "wine")
+            wine_exec "bash"
         ;;
-    "teardown")
-        echo "Tearing down services..."
-        exec_cmd "docker compose down"
+          "mplab")
+            # Fall through, all these case are the zephyre.
+        ;&
+          "zephyr")
+            try_docker_exec $INSPECT_TARGET "bash" "-it"
         ;;
-    *)
-        echo "Invalid operation. Not a valid run.sh argument."
-        show_help
+          "zephyr-tty")
+            # export HOST_DEVICE_PORT=$(find_board_port) || exit 1
+            try_docker_exec $INSPECT_TARGET "bash" "-it"
+        ;;
+        *)
+        echo "Invalid inspect target: ${INSPECT_TARGET}"
         exit 1
         ;;
+      esac
+      ;;
+  "teardown")
+      echo "Tearing down services..."
+      exec_cmd "docker compose down"
+      ;;
+  *)
+    echo "Invalid operation. Not a valid run.sh argument."
+    show_help
+    exit 1
+    ;;
 esac
