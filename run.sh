@@ -481,7 +481,7 @@ build_docker() {
 
     build_cmd+=" --build-arg FSW_WDIR=${ZEPHYR_WDIR} --build-arg HOST_UID=$HOST_UID --build-arg HOST_GID=$HOST_GID"
     build_cmd+=" --build-arg REQUIREMENTS_FILE=${requirements_file}"
-    # build_cmd+="; rm -rf ${requirements_file}"
+    build_cmd+="; rm -rf ${requirements_file}"
     exec_cmd "$build_cmd"
 }
 
