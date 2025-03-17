@@ -227,171 +227,262 @@ repo_check() {
     cd $starting_dir
 }
 
-retrieve_requirements_from_remote() {
-    if ! repo_check "$SCRIPT_DIR/fprime"; then
+fetch_requirements_file() {
+    local repo=$1
+    local commit=$2
+    local file_path=$3
+    local temp_dir=$4
+
+    echo "Fetching requirements file: $file_path"
+
+    # Generate URL for the requirements file
+    local req_url="https://api.github.com/repos/${repo}/contents/${file_path}?ref=${commit}"
+
+    # Create a unique name for this response file
+    local req_response="${temp_dir}/$(basename ${file_path}).json"
+
+    # Fetch the file
+    exec_cmd "curl -s -L \"${req_url}\" > \"${req_response}\""
+
+    # Check for errors
+    local file_error=$(jq -r '.message // empty' "${req_response}")
+    if [ ! -z "$file_error" ]; then
+        echo "WARNING: Could not fetch ${file_path}: ${file_error}"
+        return 1
+    fi
+
+    # Decode the content
+    local file_content=$(jq -r '.content // "No content found"' "${req_response}" | base64 -d 2>/dev/null)
+
+    # Process each line of the requirements file
+    while IFS= read -r line; do
+        # Check if this line is a reference to another requirements file
+        if [[ "$line" =~ ^-r[[:space:]]+([^[:space:]]+) ]]; then
+            # Extract the referenced file path
+            local ref_file="${BASH_REMATCH[1]}"
+            # Get the directory of the current file
+            local current_dir=$(dirname "$file_path")
+            # Construct the full path to the referenced file
+            local ref_path="${current_dir}/${ref_file}"
+            # Recursively fetch the referenced file
+            fetch_requirements_file "$repo" "$commit" "$ref_path" "$temp_dir"
+        else
+            # If it's a normal requirement line, output it
+            echo "$line" >> "${temp_dir}/combined_requirements.txt"
+        fi
+    done <<< "$file_content"
+}
+
+retrieve_remote_requirements() {
+    local local_submodule_path=$1
+    local requirements_path=$2
+    local temp_dir_path=$3
+
+    if ! repo_check "$local_submodule_path"; then
       printf "Failed to validate fprime submodule\n"
       exit 1
     fi
-    # Fetch from remote to ensure we have latest refs
-    exec_cmd "git fetch -q origin"
-    # Get current commit hash
-    local fsw_commit=$(git rev-parse HEAD)
-    printf "Retrieving fprime commit via GitHub REST API with curl...\n"
 
-    # Extract the repo owner and name from the remote URL
-    local github_baseurl="github.com"
-    local fsw_project_path=$(git remote get-url origin | sed -nE "s/.*(${github_baseurl})[:/](.*)\.git/\2/p")
-
-    # Get the submodule commit hash using the GitHub API
-    # First, we need to get the .gitmodules content to find the path to the submodule
-    local submodule_url="https://api.github.com/repos/${fsw_project_path}/contents/.gitmodules?ref=${fsw_commit}"
-    local curl_cmd="curl -s \"${submodule_url}\""
-    local gitmodules_content=$(eval $curl_cmd | jq -r '.content' | base64 -d)
-
-    # Extract the fprime submodule path and URL
-    local fprime_path=$(echo "$gitmodules_content" | grep -A3 '\[submodule "fprime"\]' | grep 'path' | cut -d'=' -f2 | tr -d ' ')
-    local fprime_url=$(echo "$gitmodules_content" | grep -A3 '\[submodule "fprime"\]' | grep 'url' | cut -d'=' -f2 | tr -d ' ')
-
-    # Get the commit hash of the submodule
-    local submodule_status_url="https://api.github.com/repos/${fsw_project_path}/contents/${fprime_path}?ref=${fsw_commit}"
-    local fprime_commit=$(curl -s "${submodule_status_url}" | jq -r '.sha')
-
-    # Extract the owner and repo name from the fprime URL
-    local fprime_project=$(echo "$fprime_url" | sed -nE "s/.*(${github_baseurl})[:/](.*)\.git/\2/p")
-
-    # Now generate a URL which requests the requirements.txt from the fprime repo
-    local requirements_url="https://api.github.com/repos/${fprime_project}/contents/requirements.txt?ref=${fprime_commit}"
-
-    # Download the requirements file
-    local cmd="curl -s \"${requirements_url}\" | jq -r '.content' | base64 -d > $SCRIPT_DIR/.tmp/fprime_requirements.txt"
-    exec_cmd "$cmd"
-}
-
-retrieve_requirements_from_zephyr() {
-    submodule=$1
     # Fetch from remote to ensure we have latest refs
     exec_cmd "git fetch -q origin"
     # Get current commit hash
     local fsw_repo_commit=$(git rev-parse HEAD)
-    printf "Retrieving requirements for submodule '${submodule}' via GitHub REST API...\n"
+    printf "Retrieving requirements for submodule '${local_submodule_path}' via GitHub REST API...\n"
 
     # Extract the repo owner and name from the remote URL
     local github_baseurl="github.com"
     local fsw_project_path=$(git remote get-url origin | sed -nE "s/.*(${github_baseurl})[:/](.*)\.git/\2/p")
 
-    # Debug: Check the extracted project path
-    echo "DEBUG: Project path: ${fsw_project_path}"
-
-    # Get the .gitmodules content
+    # Get the .gitmodules content - add -L flag to follow redirects
     local submodule_url="https://api.github.com/repos/${fsw_project_path}/contents/.gitmodules?ref=${fsw_repo_commit}"
-    echo "DEBUG: Submodule URL: ${submodule_url}"
 
-    # Save the raw response to examine it
+    # Save the raw response, using -L to follow redirects
     local raw_response="/tmp/github_response.json"
     exec_cmd "curl -s -L \"${submodule_url}\" > ${raw_response}"
 
-    # Check if the response contains an error
+    # Check if the response still contains an error
     local error_message=$(jq -r '.message // empty' ${raw_response})
     if [ ! -z "$error_message" ]; then
-        echo "DEBUG: GitHub API Error: ${error_message}"
-        echo "DEBUG: Full response:"
-        cat ${raw_response}
+        echo "ERROR: GitHub API Error: ${error_message}"
         return 1
     fi
 
-    # If we got here, we should have a valid response
     local gitmodules_content=$(jq -r '.content // "No content field found"' ${raw_response} | base64 -d 2>/dev/null || echo "Failed to decode base64 content")
 
-    echo "DEBUG: .gitmodules content:"
-    echo "${gitmodules_content}"
-
     # Extract the specific submodule information
-    local submodule_section=$(echo "${gitmodules_content}" | grep -A3 "\[submodule \"${submodule}\"\]" || echo "Submodule section not found")
-    echo "DEBUG: Submodule section for '${submodule}':"
-    echo "${submodule_section}"
+    local submodule_section=$(echo "${gitmodules_content}" | grep -A3 "\[submodule \"${local_submodule_path}\"\]" || echo "")
 
-    if [ -z "${submodule_section}" ] || [ "${submodule_section}" == "Submodule section not found" ]; then
-        echo "ERROR: Submodule '${submodule}' not found in .gitmodules"
-        return 1
+    # Try looking for the path part without the full submodule name
+    local submodule_base=$(basename "$local_submodule_path")
+    if [ -z "${submodule_section}" ]; then
+        submodule_section=$(echo "${gitmodules_content}" | grep -A3 "\[submodule \"${submodule_base}\"\]" || echo "")
+
+        if [ -z "${submodule_section}" ]; then
+            echo "ERROR: Submodule '${local_submodule_path}' or '${submodule_base}' not found in .gitmodules"
+            return 1
+        fi
     fi
 
     # Extract the submodule path and URL
-    local submodule_path=$(echo "$submodule_section" | grep 'path' | cut -d'=' -f2 | tr -d ' ')
+    local remote_submodule_path=$(echo "$submodule_section" | grep 'path' | cut -d'=' -f2 | tr -d ' ')
     local submodule_url=$(echo "$submodule_section" | grep 'url' | cut -d'=' -f2 | tr -d ' ')
 
-    echo "DEBUG: Submodule path: ${submodule_path}"
-    echo "DEBUG: Submodule URL: ${submodule_url}"
-
     # Get the commit hash of the submodule
-    local submodule_status_url="https://api.github.com/repos/${fsw_project_path}/contents/${submodule_path}?ref=${fsw_repo_commit}"
-    echo "DEBUG: Submodule status URL: ${submodule_status_url}"
+    local submodule_status_url="https://api.github.com/repos/${fsw_project_path}/contents/${remote_submodule_path}?ref=${fsw_repo_commit}"
 
-    exec_cmd "curl -s \"${submodule_status_url}\" > ${raw_response}"
+    exec_cmd "curl -s -L \"${submodule_status_url}\" > ${raw_response}"
     local status_error=$(jq -r '.message // empty' ${raw_response})
     if [ ! -z "$status_error" ]; then
-        echo "DEBUG: GitHub API Error for submodule status: ${status_error}"
+        echo "ERROR: GitHub API Error for submodule status: ${status_error}"
         return 1
     fi
 
     local submodule_commit=$(jq -r '.sha // "No SHA found"' ${raw_response})
-    echo "DEBUG: Submodule commit: ${submodule_commit}"
 
     # Extract the owner and repo name from the submodule URL
-    local submodule_repo=$(echo "$submodule_url" | sed -nE "s/.*(${github_baseurl})[:/](.*)\.git/\2/p")
-    echo "DEBUG: Submodule repo: ${submodule_repo}"
+    echo "DEBUG: Submodule url: ${submodule_url}"
+    local ssh_regex="s/.*(${github_baseurl})[:/](.*)\.git/\2/p"
+    local https_regex="s/.*(${github_baseurl})[:/](.*)$/\2/p"
+    local submodule_repo=$(echo "$submodule_url" | sed -nE "$ssh_regex")
+    # If we didn't get a submodule_repo yet we probably have a https not ssh submodule url
+    if [ -z $submodule_repo ]; then
+      submodule_repo=$(echo "$submodule_url" | sed -nE "$https_regex")
+    fi
 
-    # Now generate a URL which requests the requirements.txt from the submodule repo
-    local requirements_url="https://api.github.com/repos/${submodule_repo}/contents/requirements.txt?ref=${submodule_commit}"
-    echo "DEBUG: Requirements URL: ${requirements_url}"
+    # Start with the main requirements.txt file
+    fetch_requirements_file "${submodule_repo}" "${submodule_commit}" "$remote_requirements_path" "${temp_dir_path}"
 
-    # Download the requirements file
-    exec_cmd "curl -s \"${requirements_url}\" > ${raw_response}"
-    local req_error=$(jq -r '.message // empty' ${raw_response})
-    if [ ! -z "$req_error" ]; then
-        echo "DEBUG: GitHub API Error for requirements.txt: ${req_error}"
+    # Check if we got any requirements
+    echo "temp path $temp_dir_path"
+    if [ -f "${temp_dir_path}/combined_requirements.txt" ]; then
+        # Sort and remove duplicates
+        # NOTE we could make a requirements.txt per project but this seems simpler
+        # sort -u "${temp_dir_path}/combined_requirements.txt" > "tmp_${submodule_base}_requirements.txt"
+        # echo "Combined requirements for ${local_submodule_path} saved to tmp_${submodule_base}_requirements.txt"
+        echo "Saving requirements for ${local_submodule_path} to combined_requirements.txt"
+        sort_cmd="sort -u \"${temp_dir_path}/combined_requirements.txt\" > \"combined_requirements.txt\""
+        exec_cmd "$sort_cmd"
+    else
+        echo "No requirements files were successfully fetched."
+        return 1
+    fi
+}
+
+process_local_requirements_file() {
+    local file_path=$1
+    local temp_dir=$2
+
+    echo "Processing local requirements file: ${file_path}"
+
+    # Check if the file exists
+    if [ ! -f "${file_path}" ]; then
+        echo "WARNING: Could not find referenced requirements file: ${file_path}"
         return 1
     fi
 
-    # Extract and decode the content
-    local requirements_content=$(jq -r '.content // "No content field found"' ${raw_response} | base64 -d 2>/dev/null || echo "Failed to decode base64 content")
-    echo "DEBUG: Requirements content:"
-    echo "${requirements_content}"
+    # Process each line of the requirements file
+    while IFS= read -r line || [ -n "$line" ]; do
+        # Skip empty lines or comments
+        if [[ -z "$line" || "$line" =~ ^[[:space:]]*# ]]; then
+            continue
+        fi
 
-    # Save to file if all went well
-    if [ "${requirements_content}" != "No content field found" ] && [ "${requirements_content}" != "Failed to decode base64 content" ]; then
-        echo "${requirements_content}" > "tmp_${submodule}_requirements.txt"
-        echo "Requirements for ${submodule} saved to tmp_${submodule}_requirements.txt"
+        # Check if this line is a reference to another requirements file
+        if [[ "$line" =~ ^-r[[:space:]]+([^[:space:]]+) ]]; then
+            # Extract the referenced file path
+            local ref_file="${BASH_REMATCH[1]}"
+            # Get the directory of the current file
+            local current_dir=$(dirname "$file_path")
+            # Construct the full path to the referenced file
+            local ref_path="${current_dir}/${ref_file}"
+
+            # Recursively process the referenced file
+            process_local_requirements_file "$ref_path" "$temp_dir"
+        else
+            # If it's a normal requirement line, output it
+            echo "$line" >> "${temp_dir}/combined_requirements.txt"
+        fi
+    done < "$file_path"
+}
+
+retrieve_local_requirements() {
+    local local_submodule_path=$1
+    local requirements_path=$2
+    local temp_dir_path=$3
+
+    echo "Retrieving requirements from local path: ${local_submodule_path}/${requirements_path}"
+
+    # The complete path to the requirements file
+    local full_requirements_path="${SCRIPT_DIR}/${local_submodule_path}/${requirements_path}"
+
+    # Check if the file exists
+    if [ ! -f "${full_requirements_path}" ]; then
+        echo "ERROR: Requirements file not found at ${full_requirements_path}"
+        return 1
+    fi
+
+    if [ $CLEAN -eq 1 ]; then
+      exec_cmd "rm -f ${temp_dir_path}/combined_requirements.txt"
+    fi
+
+    exec_cmd "touch ${temp_dir_path}/combined_requirements.txt"
+
+    # Start processing with the main requirements file
+    process_local_requirements_file "${full_requirements_path}" "${temp_dir_path}"
+
+    # Check if we got any requirements
+    if [ -f "${temp_dir_path}/combined_requirements.txt" ]; then
+        # Sort and remove duplicates
+        # Note: Since the remote function is already handling the final sorting and saving,
+        # we'll just ensure the combined file exists and is ready for that step
+        echo "Successfully processed local requirements for ${local_submodule_path}/${requirements_path}"
+
+        # Sort and save directly to combined_requirements.txt if needed
+        sort_cmd="sort -u \"${temp_dir_path}/combined_requirements.txt\" > \"combined_requirements.txt\""
+        exec_cmd "$sort_cmd"
     else
-        echo "ERROR: Failed to retrieve requirements.txt for ${submodule}"
+        echo "No requirements were successfully processed."
+        return 1
     fi
 }
 
-retrieve_requirements_from_local() {
-    # Alternatively we could get the submodule commit from our local copy of the
-    # fprime submodule however this would be less "purely local" so doesn't quiet match the DWIM ethos
-    requirements_dir=${1:fprime}
-    requirements_path="${SCRIPT_DIR}/${requirements_dir}/requirements.txt"
-    local cmd="cp $requirements_path $SCRIPT_DIR/tmp_requirements.txt"
-    exec_cmd "$cmd"
-}
-
-build_docker() {
-    retrieve_requirements_from_zephyr "deps/zephyr"
+retrieve_requirements() {
+    local local_submodule_path=$1
+    local requirements_path=$2
+    local temp_dir_path=$3
+    if [ -z $local_submodule_path ] || [ -z $requirements_path ] || [ -z $temp_dir_path ]; then
+      printf "Error! to retrieve requirements we need the local_submodule_path, remote_requirements_path, and temp_dir_path!\n"
+    fi
 
     # Dependending on our config we either want to get the requirements url by probing remote servers
     # or by finding the file locally
-    # if [ $LOCAL -eq 1 ]; then
-    #   retrieve_requirements_from_local "fprime"
-    # else
-    #   retrieve_requirements_from_remote
-    # fi
+    if [ $LOCAL -eq 1 ]; then
+      retrieve_local_requirements "$local_submodule_path" "$requirements_path" "$temp_dir_path"
+    else
+      retrieve_remote_requirements "$local_submodule_path" "$requirements_path" "$temp_dir_path"
+    fi
+}
 
-    # local build_cmd="docker compose --progress=plain --env-file=${SCRIPT_DIR}/.env build zephyr"
+build_docker() {
+    # local temp_dir=$(mktemp -d -p .)
+    # local temp_dir=$(mktemp -d -p .)
+    local temp_dir="tmp.Pa1iAFIXmD"
+    local requirements_file="${temp_dir}/combined_requirements.txt"
 
-    # [ "$CLEAN" -eq 1 ] && build_cmd+=" --no-cache"
+    # Get the requirements for our submodules
+    # NOTE this could probably be expanded to retrieve more file types and loop on submodules
+    retrieve_requirements "fprime" "requirements.txt" "$temp_dir"
+    retrieve_requirements "deps/zephyr" "scripts/requirements.txt" "$temp_dir"
 
-    # build_cmd+=" --build-arg FSW_WDIR=${ZEPHYR_WDIR} --build-arg HOST_UID=$HOST_UID --build-arg HOST_GID=$HOST_GID"
-    # exec_cmd "$build_cmd; rm -f tmp_requirements.txt"
+    # Clean up temporary directory
+    local build_cmd="docker compose --progress=plain --env-file=${SCRIPT_DIR}/.env build zephyr"
+
+    [ "$CLEAN" -eq 1 ] && build_cmd+=" --no-cache"
+
+    build_cmd+=" --build-arg FSW_WDIR=${ZEPHYR_WDIR} --build-arg HOST_UID=$HOST_UID --build-arg HOST_GID=$HOST_GID"
+    build_cmd+=" --build-arg REQUIREMENTS_FILE=${requirements_file}"
+    # build_cmd+="; rm -rf ${requirements_file}"
+    exec_cmd "$build_cmd"
 }
 
 container_to_host_paths() {
@@ -404,20 +495,6 @@ container_to_host_paths() {
   mod_dict_cmd="sed -i \"s|${host_path}|${container_path}|g\" \"${build_json_path}/compile_commands.json\""
 
   exec_cmd "$mod_dict_cmd"
-}
-
-build_cmsis_st() {
-    cmsis_path="fprime-cmsis/cmake/toolchain/support/sources/zephyrv71q21b"
-    flags="-w $ZEPHYR_WDIR/$cmsis_path $DEFAULT_FLAGS"
-    # NOTE we often get stuck on trivial schema errors.
-    # prevent this with -n
-    # cmd="csolution -v -d convert blinky.csolution.yml"
-    # cmd="cbuild -v -p blinky.csolution.yml"
-    # cmd="cbuild setup blinky.csolution.yml --context-set"
-    cmd="cbuild blinky.csolution.yml -d --context-set --packs --rebuild"
-    try_docker_exec "zephyr" "bash -c \"$cmd\"" "$flags"
-
-    container_to_host_path "${SCRIPT_DIR}/${cmsis_path}/out/blinky/ZephyrV71-Xplained-Board/Debug"
 }
 
 build_zephyr_st() {
