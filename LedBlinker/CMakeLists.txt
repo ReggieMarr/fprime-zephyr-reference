@@ -48,4 +48,6 @@ target_link_libraries(app PUBLIC
     LedBlinker
 )
 
+add_dependencies(app zephyr_generated_headers)
+
 set_target_properties(Svc_FatalHandler PROPERTIES EXCLUDE_FROM_ALL TRUE)

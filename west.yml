@@ -7,7 +7,7 @@ manifest:
       # This ensures west has access to zephyrs extensions
       west-commands: scripts/west-commands.yml
       url: https://github.com/zephyrproject-rtos/zephyr
-      revision: v4.0-branch
+      revision: v4.1-branch
       clone-depth: 1
       import:
         path-prefix: deps

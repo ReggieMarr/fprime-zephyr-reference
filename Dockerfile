@@ -61,9 +61,6 @@ COPY $REQUIREMENTS_FILE .
 # install the deps and remove after use
 RUN pip install -r combined_requirements.txt && rm -f $REQUIREMENTS_FILE
 
-# NOTE for zephyr deps, the latest branch supports this instead of a requirements.txt file
-# RUN pip install west && west packages pip --install
-
 FROM python-setup AS west-setup
 
 WORKDIR $FSW_WDIR
@@ -73,12 +70,13 @@ ENV PATH=$PATH:/home/user/zephyr-sdk-0.17.0/arm-zephyr-eabi/bin
 
 # Its unclear whether theres much advantage to be had to include the workspace
 # in the image
-# COPY .west .
-# COPY west.yml .
-# RUN west update -n
+COPY .west ${FSW_WDIR}/.west
+COPY west.yml ${FSW_WDIR}/west.yml
 
-# RUN west sdk install -t arm-zephyr-eabi
-# RUN west zephyr-export
+# NOTE for zephyr deps, the latest branch supports this instead of a requirements.txt file
+RUN pip install west && west update -n && west packages pip --install
+
+RUN west sdk install -t arm-zephyr-eabi
 
 # Remove the apt cache at the end to reduce image size
 USER root
