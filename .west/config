@@ -2,3 +2,6 @@
 path = BaseDeployment
 file = west.yml
 
+[zephyr]
+base = deps/zephyr
+
