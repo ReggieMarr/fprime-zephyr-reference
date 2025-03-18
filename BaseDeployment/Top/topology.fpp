@@ -1,4 +1,4 @@
-module LedBlinker {
+module BaseDeployment {
 
   # ----------------------------------------------------------------------
   # Symbolic constants for port numbers
@@ -15,7 +15,7 @@ module LedBlinker {
       deframing
     }
 
-  topology LedBlinker {
+  topology BaseDeployment {
 
     # ----------------------------------------------------------------------
     # Instances used in the topology

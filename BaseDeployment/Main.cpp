@@ -10,8 +10,8 @@
 #include <zephyr/usb/usb_device.h>
 #include <zephyr/usb/usbd.h>
 #include <Fw/Logger/Logger.hpp>
-#include <LedBlinker/Top/LedBlinkerTopology.hpp>
-#include <LedBlinker/Top/LedBlinkerTopologyAc.hpp>
+#include <BaseDeployment/Top/BaseDeploymentTopology.hpp>
+#include <BaseDeployment/Top/BaseDeploymentTopologyAc.hpp>
 #include <cerrno>
 #include "FpConfig.h"
 #include "Os/Os.hpp"
@@ -60,13 +60,13 @@ int main() {
     gpio_pin_set_dt(&led0, 0);
 
     // Object for communicating state to the reference topology
-    LedBlinker::TopologyState inputs;
+    BaseDeployment::TopologyState inputs;
     inputs.dev = serial;
     inputs.uartBaud = 115200;
 
     // Setup topology
     Fw::Logger::log("Setting up the Topology\n");
-    LedBlinker::setupTopology(inputs);
+    BaseDeployment::setupTopology(inputs);
 
     gpio_pin_set_dt(&led1, 0);
     gpio_pin_set_dt(&led0, 1);

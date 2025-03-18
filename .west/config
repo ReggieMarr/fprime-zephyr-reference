@@ -1,4 +1,4 @@
 [manifest]
-path = LedBlinker
+path = BaseDeployment
 file = west.yml
 

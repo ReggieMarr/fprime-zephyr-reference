@@ -1,5 +1,5 @@
 // ======================================================================
-// \title  LedBlinkerTopologyDefs.hpp
+// \title  BaseDeploymentTopologyDefs.hpp
 // \brief required header file containing the required definitions for the topology autocoder
 //
 // ======================================================================
@@ -7,7 +7,7 @@
 #define LEDBLINKER_LEDBLINKERTOPOLOGYDEFS_HPP
 
 #include "Fw/Types/MallocAllocator.hpp"
-#include "LedBlinker/Top/FppConstantsAc.hpp"
+#include "BaseDeployment/Top/FppConstantsAc.hpp"
 #include "Svc/FramingProtocol/FprimeProtocol.hpp"
 
 #include <zephyr/kernel.h>
@@ -15,12 +15,12 @@
 #include <zephyr/drivers/uart.h>
 
 // Definitions are placed within a namespace named after the deployment
-namespace LedBlinker {
+namespace BaseDeployment {
 
 /**
  * \brief required type definition to carry state
  *
- * The topology autocoder requires an object that carries state with the name `LedBlinker::TopologyState`. Only the type
+ * The topology autocoder requires an object that carries state with the name `BaseDeployment::TopologyState`. Only the type
  * definition is required by the autocoder and the contents of this object are otherwise opaque to the autocoder. The
  * contents are entirely up to the definition of the project. This reference application specifies hostname and port
  * fields, which are derived by command line inputs.
@@ -63,5 +63,5 @@ namespace rateGroup1 {
 enum { WARN = 3, FATAL = 5 };
 }
 }  // namespace PingEntries
-}  // namespace LedBlinker
+}  // namespace BaseDeployment
 #endif
