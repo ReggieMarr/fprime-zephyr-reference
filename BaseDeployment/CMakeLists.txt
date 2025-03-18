@@ -10,18 +10,16 @@ find_package(Zephyr REQUIRED HINTS $ENV{ZEPHYR_BASE})
 
 project(fprime-zephyr-reference C CXX)
 
-###
-# F' Core Setup
-# This includes all of the F prime core components, and imports the make-system.
-###
-set(FPRIME_SETTINGS_FILE /fprime-zephyr-reference/BaseDeployment/settings.ini)
-set(FPRIME_ENVIRONMENT_FILE /fprime-zephyr-reference/BaseDeployment/settings.ini)
+# Get the absolute path of the root of the project
+get_filename_component(PROJECT_ROOT "${CMAKE_PROJECT_DIR}../" ABSOLUTE)
+
+set(FPRIME_SETTINGS_FILE "${PROJECT_ROOT}/BaseDeployment/settings.ini")
 set(FPRIME_PLATFORM Zephyr)
 set(FPRIME_TOOLCHAIN zephyr)
 
-set(CMAKE_TOOLCHAIN_FILE /fprime-zephyr-reference/deps/fprime-zephyr/cmake/toolchain/zephyr.cmake)
+set(CMAKE_TOOLCHAIN_FILE "${PROJECT_ROOT}/deps/fprime-zephyr/cmake/toolchain/zephyr.cmake")
 
-include("${CMAKE_CURRENT_LIST_DIR}/../deps/fprime/cmake/FPrime.cmake")
+include("${PROJECT_ROOT}/deps/fprime/cmake/FPrime.cmake")
 
 # Basically we just want to avoid the install target and util targets
 set(FPRIME_SUB_BUILD_TARGETS
@@ -35,18 +33,14 @@ set(FPRIME_SUB_BUILD_TARGETS
 
 fprime_setup_included_code()
 
-add_fprime_subdirectory("${CMAKE_CURRENT_LIST_DIR}/../Components")
-# add_fprime_subdirectory("${CMAKE_CURRENT_LIST_DIR}")
+add_fprime_subdirectory("${PROJECT_ROOT}/Components")
 
+# This ensures anything pulled in downstream restricts to the Zephyr platform
 restrict_platforms(Zephyr)
 
-set(SOURCE_FILES "${CMAKE_CURRENT_LIST_DIR}/Stub.cpp")
-set(MOD_DEPS BaseDeployment/Top)
-
-# This results in creating a new library target based on this module's sources
-register_fprime_module(BaseDeployment)
 add_fprime_subdirectory("${CMAKE_CURRENT_LIST_DIR}/Top/")
 
+# This results in creating a new library target based on this module's sources
 include("${FPRIME_FRAMEWORK_PATH}/cmake/target/build.cmake")
 function(generate_zephyr_deployment TARGET_TYPE TARGET_NAME SOURCE_FILES DEPENDENCIES)
     get_nearest_build_root(${CMAKE_CURRENT_LIST_DIR})
@@ -66,7 +60,7 @@ function(generate_zephyr_deployment TARGET_TYPE TARGET_NAME SOURCE_FILES DEPENDE
 endfunction(generate_zephyr_deployment)
 
 # Links BaseDeployment_Top to zephyr interface library
-target_link_libraries(BaseDeployment PUBLIC zephyr_interface)
+target_link_libraries(BaseDeployment_Top PUBLIC zephyr_interface)
 
 target_sources(app PRIVATE
     "${CMAKE_CURRENT_LIST_DIR}/Main.cpp"
@@ -76,7 +70,7 @@ generate_zephyr_deployment("Deployment" "app" "${SOURCE_FILES}" "${MOD_DEPS}")
 
 # Use Zephyr's link group mechanism
 target_link_libraries(app PUBLIC
-    BaseDeployment
+    BaseDeployment_Top
 )
 
 add_dependencies(app zephyr_generated_headers)

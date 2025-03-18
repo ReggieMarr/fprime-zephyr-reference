@@ -5,6 +5,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+    working_dir: $ZEPHYR_WDIR
     environment:
       - TERM=xterm-256color
       - FORCE_COLOR=1

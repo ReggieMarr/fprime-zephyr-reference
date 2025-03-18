@@ -511,20 +511,17 @@ build_zephyr_st() {
 
 # Used as a reference for sticky build issues
 build_ledblinker_cmake() {
-    exec_cmd "mkdir -p $SCRIPT_DIR/BaseDeployment/build"
-    flags="-w $ZEPHYR_WDIR/build $DEFAULT_FLAGS"
+    container_build_dir="$ZEPHYR_WDIR/BaseDeployment/build"
 
     sam_board_info="-DBOARD=sam_v71_xult -DBOARD_QUALIFIERS=/samv71q21b"
-    gen_cmd="cmake -S ${ZEPHYR_WDIR}/BaseDeployment -GNinja -B ${ZEPHYR_WDIR}/BaseDeployment/build ${sam_board_info}"
-    # build_cmd="cmake --build /fprime-zephyr-reference/build --target zephyr_final"
-    # this is essentially the equivalent
-    build_cmd="ninja zephyr_final"
+    gen_cmd="cmake -S ${ZEPHYR_WDIR}/BaseDeployment -GNinja -B $container_build_dir ${sam_board_info}"
+    build_cmd="cmake --build $container_build_dir --target zephyr_final"
     cmd=$build_cmd
-    [ "$CLEAN" -eq 1 ] && cmd="rm ../build/* -rf && ${gen_cmd} && ${build_cmd}"
+    [ "$CLEAN" -eq 1 ] && cmd="rm -rf ${container_build_dir}/* && ${gen_cmd} && ${build_cmd}"
 
-    try_docker_exec "zephyr" "bash -c \"$cmd\"" "$flags"
+    try_docker_exec "zephyr" "bash -c \"$cmd\"" "$DEFAULT_FLAGS"
 
-    container_to_host_paths "${ZEPHYR_WDIR}" "${SCRIPT_DIR}" "${SCRIPT_DIR}/build"
+    container_to_host_paths "${ZEPHYR_WDIR}" "${SCRIPT_DIR}" "$SCRIPT_DIR/BaseDeployment/build"
 }
 
 build_ledblinker_west() {
