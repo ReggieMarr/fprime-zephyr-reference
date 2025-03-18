@@ -1,6 +1,0 @@
-[manifest]
-path = ..
-file = ./LedBlinker/west.yml
-
-[zephyr]
-base = ../deps/zephyr

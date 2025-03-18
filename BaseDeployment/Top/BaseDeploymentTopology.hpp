@@ -1,17 +1,17 @@
 // ======================================================================
-// \title  LedBlinkerTopology.hpp
+// \title  BaseDeploymentTopology.hpp
 // \brief header file containing the topology instantiation definitions
 //
 // ======================================================================
 #ifndef LEDBLINKER_LEDBLINKERTOPOLOGY_HPP
 #define LEDBLINKER_LEDBLINKERTOPOLOGY_HPP
-// Included for access to LedBlinker::TopologyState and LedBlinker::ConfigObjects::pingEntries. These definitions are required by the
+// Included for access to BaseDeployment::TopologyState and BaseDeployment::ConfigObjects::pingEntries. These definitions are required by the
 // autocoder, but are also used in this hand-coded topology.
-#include <LedBlinker/Top/LedBlinkerTopologyDefs.hpp>
+#include <BaseDeployment/Top/BaseDeploymentTopologyDefs.hpp>
 
-// Remove unnecessary LedBlinker:: qualifications
-using namespace LedBlinker;
-namespace LedBlinker {
+// Remove unnecessary BaseDeployment:: qualifications
+using namespace BaseDeployment;
+namespace BaseDeployment {
 /**
  * \brief initialize and run the F´ topology
  *
@@ -32,12 +32,12 @@ namespace LedBlinker {
  * custom tasks often start radio communication it is convenient to start them last.
  *
  * The state argument carries command line inputs used to setup the topology. For an explanation of the required type
- * LedBlinker::TopologyState see: LedBlinkerTopologyDefs.hpp.
+ * BaseDeployment::TopologyState see: BaseDeploymentTopologyDefs.hpp.
  *
  * \param state: object shuttling CLI arguments (hostname, port) needed to construct the topology
  */
 void setupTopology(const TopologyState& state);
 
-} // namespace LedBlinker
+} // namespace BaseDeployment
 
 #endif

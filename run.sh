@@ -511,11 +511,11 @@ build_zephyr_st() {
 
 # Used as a reference for sticky build issues
 build_ledblinker_cmake() {
-    exec_cmd "mkdir -p $SCRIPT_DIR/build"
+    exec_cmd "mkdir -p $SCRIPT_DIR/BaseDeployment/build"
     flags="-w $ZEPHYR_WDIR/build $DEFAULT_FLAGS"
 
     sam_board_info="-DBOARD=sam_v71_xult -DBOARD_QUALIFIERS=/samv71q21b"
-    gen_cmd="cmake -S ${ZEPHYR_WDIR} -GNinja -B ${ZEPHYR_WDIR}/build ${sam_board_info}"
+    gen_cmd="cmake -S ${ZEPHYR_WDIR}/BaseDeployment -GNinja -B ${ZEPHYR_WDIR}/BaseDeployment/build ${sam_board_info}"
     # build_cmd="cmake --build /fprime-zephyr-reference/build --target zephyr_final"
     # this is essentially the equivalent
     build_cmd="ninja zephyr_final"
@@ -548,10 +548,10 @@ case $1 in
       "zephyr-st")
         build_zephyr_st
       ;;
-      "LedBlinker")
+      "BaseDeployment")
         build_ledblinker_cmake
       ;;
-      "LedBlinker-west")
+      "BaseDeployment-west")
         build_ledblinker_west
       ;;
       "docker")
@@ -581,7 +581,7 @@ case $1 in
 
         run_docker_compose "zephyr-tty" "bash -c \"${load_cmd}\"" "it"
       ;;
-      "LedBlinker")
+      "BaseDeployment")
         # Stands for cmsis smoketest
         flags="-w $ZEPHYR_WDIR/$zephyr_path $DEFAULT_FLAGS"
         debug_cmd="west gdbserver --skip-rebuild"
@@ -627,7 +627,7 @@ case $1 in
         #NOTE the gds port is not the debug port, if incorrectly selected the serial output will appear garbled (see exec console output)
         gds_port=${3:-"/dev/ttyACM0"}
         baud="115200"
-        dict_path="${ZEPHYR_WDIR}/build/LedBlinker/Top/LedBlinkerTopologyDictionary.json"
+        dict_path="${ZEPHYR_WDIR}/build/BaseDeployment/Top/BaseDeploymentTopologyDictionary.json"
         cmd="fprime-gds --dictionary ${dict_path} --uart-device ${gds_port} --uart-baud ${baud} --communication-selection uart -n"
         flags="-it"
         try_docker_exec "zephyr-tty" "bash -c \"$cmd\"" "$flags"

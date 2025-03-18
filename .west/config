@@ -1,0 +1,4 @@
+[manifest]
+path = BaseDeployment
+file = west.yml
+
