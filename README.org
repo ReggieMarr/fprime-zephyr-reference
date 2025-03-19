@@ -16,7 +16,7 @@ The project structure includes:
 
 The following [[https://c4model.com/diagrams/container][C4 container diagram]] illustrates the relationships between these functional components.
 
-#+begin_src plantuml :file .assets/project_overview.png :tangle .assets/project_overview.puml :exports results
+#+begin_src plantuml :file .assets/deployment_cd.png :tangle .assets/deployment_cd.puml :exports results
 @startuml F' Zephyr System Architecture
 !include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Component.puml
 !include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Context.puml
@@ -29,39 +29,116 @@ The following [[https://c4model.com/diagrams/container][C4 container diagram]] i
 !include ICONURL/font-awesome-5/sitemap.puml
 !include ICONURL/font-awesome-5/cube.puml
 !include ICONURL/font-awesome-5/cogs.puml
-!include ICONURL/font-awesome-5/cog.puml
+!include ICONURL/font-awesome-5/toolbox.puml
+!include ICONURL/font-awesome-5/sitemap.puml
+!include ICONURL/material/exit_to_app.puml
+
+LAYOUT_WITH_LEGEND()
+
+HIDE_STEREOTYPE()
+title "F' Zephyr Reference Deployment"
+
+Person(developer, "Developer", "Uses and develops Deployment Applications")
+
+Container(devEnv, "Developer Environment", "Docker + Bash", "Supports building, running, and testing in virtual environment", $sprite="docker")
+Container(gds, "Ground Data System", "F' Application GUI", "Web Based Developer UI connects to F' via TCP", $sprite="desktop")
+Container(deployment, "Reference Deployment", $descr="F' built with Zephyr for OS and Driver support", $techn="Application", $sprite="sitemap")
+
+System_Ext(samv71, "SamV71 Xplained Ultra", $type="Reference Board", $sprite="microchip")
+
+Rel_D(developer, devEnv, "Uses", "run.sh")
+Rel_D(devEnv, deployment, "Builds/Runs", "fprime-util + zephyr sdk via cmake")
+Rel_R(devEnv, gds, "Runs", "run.sh")
+BiRel(developer, gds, "Builds/Runs", "Web UI @ localhost:5000")
+Rel_R(deployment, samv71, "Targets", "Physical hardware")
+BiRel_U(samv71, gds, "Interacts with", "Serial connection")
+
+@enduml
+#+end_src
+
+#+RESULTS:
+[[file:.assets/deployment_cd.png]]
+
+** Build Process
+The build process for F' Zephyr applications combines two sophisticated build systems—F Prime's FPP-based component generation system and Zephyr's CMake-based hardware configuration system—into a unified workflow that generates deployable firmware.
+
+When a developer runs =./run.sh build BaseDeployment=, the following sequence occurs:
+
+1. *Configuration Phase*: The build system first configures the environment by:
+   - Loading board-specific definitions from the Zephyr platform (device tree, pin mappings, etc.)
+   - Processing Kconfig options that determine which Zephyr features to include
+   - Setting up F' toolchain settings to target the Zephyr platform
+   - Filtering F' modules to include only those compatible with Zephyr
+
+2. *Code Generation Phase*: The FPP toolchain processes the declarative component specifications:
+   - Parses FPP component definitions that describe interfaces, commands, events, and telemetry
+   - Generates C++ implementation files with proper ports and interfaces
+   - Creates component dictionaries for ground system interpretation
+   - Builds the component topology that defines component connections
+
+3. *Compilation Phase*: The selected compiler builds the application by:
+   - Compiling F' core framework components
+   - Building the Zephyr OS adaptation layer (Os/Memory/Zephyr, Os/Task/Zephyr, etc.)
+   - Compiling user-defined components (like the LED component)
+   - Building Zephyr-specific drivers (ZephyrGpioDriver, ZephyrUartDriver)
+   - Compiling the Zephyr kernel with configured options
+
+4. *Linking Phase*: The build process concludes by:
+   - Linking all object files into a unified executable
+   - Generating binary formats appropriate for flashing (ELF, HEX, BIN)
+   - Reporting memory usage statistics for the target board
+
+This integrated build process enables F' component-based design while leveraging Zephyr's extensive hardware support, producing deployable firmware that can run on a wide range of embedded targets while maintaining the robust, formally-defined interfaces of the F' framework.
+
+The final binaries are located in =build-fprime-automatic-zephyr/zephyr/= and include formats such as =zephyr.elf=, =zephyr.hex=, and =zephyr.bin= depending on the target platform requirements.
+
+#+begin_src plantuml :file .assets/project_build_cd.png :tangle .assets/project_build_cd.puml :exports results
+@startuml F' Zephyr System Architecture
+!include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Component.puml
+!include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Context.puml
+
+!define ICONURL https://raw.githubusercontent.com/tupadr3/plantuml-icon-font-sprites/v3.0.0/icons
+!include ICONURL/font-awesome-5/docker.puml
+!include ICONURL/font-awesome-5/network_wired.puml
+!include ICONURL/font-awesome-5/microchip.puml
+!include ICONURL/font-awesome-5/desktop.puml
+!include ICONURL/font-awesome-5/sitemap.puml
+!include ICONURL/font-awesome-5/cube.puml
+!include ICONURL/font-awesome-5/cogs.puml
 !include ICONURL/font-awesome-5/toolbox.puml
 !include ICONURL/material/exit_to_app.puml
 
 HIDE_STEREOTYPE()
-title "F' Zephyr Reference Application - System Architecture"
-Person(developer, "Developer", "Uses and develops Deployment Applications")
+/'
+ ' title "F' Zephyr Reference Application - System Architecture"
+ '/
 
 Boundary(deployment, "F' Zephyr Deployment") {
     Container(main, "Main.cpp executable", "Run deployment setup and main loop", $techn="Application", $sprite="exit_to_app")
 
-    Boundary(libFprime, "F' Libraries") {
+    Boundary(libFprime, "F' components Libraries") {
         Component(ledComp, "Components::Led", "Provide LED Device Abstraction", $descr="Custom Component", $techn="Static Library", $sprite="cube")
         Component(deploymentTopology, "BaseDeployment::Top", "Configures and instantiates deployment", $descr="Topology Component", $techn="Static Library", $sprite="cube")
         Container(fprimeCore, "fprime", $descr="Standard Components", $techn="Static Libraries", $sprite="network_wired")
         Container(zephyrFprimeToolChain, "fprime-zephyr", $descr="Toolchain Components", $techn="Static Libraries", $sprite="toolbox")
     }
-    Boundary(libZephyr, "Zephyr Libraries") {
-        Container(zephyrKernel, "Zephyr RTOS", $descr="Kernel", $techn="Interface Library", $sprite="cog")
-        Container(zephyrHardwareAbstraction, "Zephyr Drivers", $descr="Hardware abstraction layer", $techn="Static Libraries", $sprite="cogs")
-    }
+    Container(zephyrInterface, "Zephyr Interface", $descr="RTOS, Kernel, and driver API", $techn="Static Library", $sprite="cogs")
 }
 
-System_Ext(samv71, "SamV71 Xplained Ultra", $type="Reference Board", $sprite="microchip")
-Container(gds, "Ground Data System", "Operator Interface", $techn="Application", $sprite="display")
-
-BiRel(developer, deployment, "Builds/Runs", "run.sh")
-Rel(developer, gds, "Builds/Runs", "Web UI @ localhost:5000")
-BiRel_D(gds, samv71, "Interacts with", "Serial connection")
+/'
+ ' Person(developer, "Developer", "Uses and develops Deployment Applications")
+ ' System_Ext(samv71, "SamV71 Xplained Ultra", $type="Reference Board", $sprite="microchip")
+ '
+ ' Container(gds, "Ground Data System", "Operator Interface", $techn="Application", $sprite="display")
+ ' Rel(developer, deployment, "Builds/Runs", "run.sh")
+ ' BiRel(developer, gds, "Builds/Runs", "Web UI @ localhost:5000")
+ ' BiRel_D(gds, samv71, "Interacts with", "Serial connection")
+ ' Rel_R(zephyrInterface, samv71, "Targets", "Physical hardware")
+ '/
 
 ' Application Component Relationships
 Rel_R(main, libFprime, "Links against")
-Rel_R(main, libZephyr, "Links against")
+Rel_R(main, zephyrInterface, "Links against")
 Rel(deploymentTopology, fprimeCore, "Instantiates/Configures", "Core Components")
 Rel(deploymentTopology, zephyrFprimeToolChain, "Instantiates/Configures", "Platform Drivers")
 
@@ -71,23 +148,8 @@ Rel(ledComp, zephyrFprimeToolChain, "Uses", "GPIO Control")
 
 ' Layer Connections
 Rel_U(zephyrFprimeToolChain, fprimeCore, "Provides", "Component implementations")
-Rel_D(zephyrFprimeToolChain, zephyrKernel, "Implements", "RTOS services")
-Rel_U(zephyrHardwareAbstraction, zephyrFprimeToolChain, "Provides", "Driver APIs")
-Rel_R(zephyrKernel, zephyrHardwareAbstraction, "Uses", "Kernel calls")
-Rel_R(zephyrHardwareAbstraction, samv71, "Targets", "Physical hardware")
-
-/'
- ' note as N1
- '   Data Flow Example:
- '
- '   LED Command → F' Command Dispatcher → LED Component →
- '   Zephyr GPIO Driver → Zephyr GPIO API → Physical LED
- '
- '   The LED component remains platform-agnostic by using
- '   the F' interfaces, while the Zephyr-specific components
- '   handle hardware interfacing details.
- ' end note
- '/
+Rel_D(zephyrFprimeToolChain, zephyrInterface, "Implements", "RTOS services")
+Rel_U(zephyrInterface, zephyrFprimeToolChain, "Provides", "Driver APIs")
 
 @enduml
 #+end_src
@@ -95,158 +157,267 @@ Rel_R(zephyrHardwareAbstraction, samv71, "Targets", "Physical hardware")
 #+RESULTS:
 [[file:.assets/project_overview.png]]
 
+
+The architecture consists of several key layers:
+
+- *Application Components*: Custom components like the LED controller that implement application-specific logic
+- *F' Core Framework*: Standard services for command/telemetry handling, event logging, and scheduling
+- *F' Zephyr Toolchain*: Platform-specific implementations that bridge F' to Zephyr
+- *Zephyr RTOS*: Provides real-time scheduling, threading, and system services
+- *Zephyr Hardware Abstraction*: Board-specific drivers that interface with physical hardware
+- *Ground Data System (GDS)*: Provides command and monitoring interfaces for developers
+
+This layered design enables portability by isolating hardware-specific code in the lower layers while allowing application logic to use standard interfaces. The ~run.sh~ script simplifies the development and deployment process by providing a consistent interface for building, running, and testing the application.
+
+
 #+begin_src plantuml :file .assets/build_deployment_sd.png :tangle .assets/build_deployment_sd.puml :exports results
 @startuml F' Zephyr Build Process
 
 skinparam sequenceArrowThickness 2
-skinparam sequenceGroupBorderThickness 2
-skinparam NoteBorderThickness 1
-skinparam SequenceBoxBorderColor #0B5394
+skinparam sequenceBoxBorderColor #0B5394
+skinparam NoteBackgroundColor #E3F2FD
+skinparam NoteBorderColor #2196F3
 
 title F' Zephyr Reference Application - Build Process
 
 actor "Developer" as dev
 participant "run.sh" as runsh
 participant "CMake" as cmake
-participant "Zephyr Build System" as zephyr
-participant "F' Build System" as fprime
-participant "F' Code Generator" as fpptools
-participant "Compiler" as compiler
-participant "Linker" as linker
+participant "Zephyr Build" as zephyr
+participant "F' Build" as fprime
+participant "FPP Tools" as fpptools
+participant "Compiler/Linker" as compiler
 
-note over dev, linker
-  High-level build flow for F' Zephyr integration
-end note
-
-== Project Setup & Configuration ==
-dev -> runsh: ./run.sh build BaseDeployment --clean
+dev -> runsh: ./run.sh build BaseDeployment
 activate runsh
 
-runsh -> cmake: Configure build with board (sam_v71_xult)
+== Configure Build Environment ==
+runsh -> cmake: Configure with board target
 activate cmake
 
 cmake -> zephyr: Find Zephyr package
 activate zephyr
-zephyr -> zephyr: Process board definition
-zephyr -> zephyr: Load device tree & overlay
-zephyr -> zephyr: Generate devicetree_generated.h
-zephyr -> zephyr: Process Kconfig (.config + autoconf.h)
-zephyr -> cmake: Return Zephyr configuration
+note right
+  • Process board definition
+  • Handle device tree & overlays
+  • Process Kconfig options
+end note
+zephyr --> cmake: Board configuration
 deactivate zephyr
 
-cmake -> fprime: Process F' toolchain/platform settings
+cmake -> fprime: Configure F' build
 activate fprime
-
-fprime -> cmake: Set FPRIME_PLATFORM=Zephyr
-fprime -> cmake: Set FPRIME_TOOLCHAIN=zephyr
+fprime -> fprime: Filter for Zephyr-compatible modules
+fprime --> cmake: F' configuration
 deactivate fprime
 
-== Code Generation ==
-cmake -> fprime: Start FPrime setup
-activate fprime
-
-fprime -> fpptools: Locate FPP files
-activate fpptools
-fpptools -> fpptools: Run fpp-depend
-fpptools -> fprime: Return dependency info
-deactivate fpptools
-
-fprime -> cmake: Include framework modules
-fprime -> cmake: Filter non-Zephyr modules
-fprime -> cmake: Include platform-specific implementations
-fprime -> cmake: Return configured modules
-deactivate fprime
-
-note right of fprime
-  Modules selected for target platform:
-  - Os/Cpu/Zephyr
-  - Os/Memory/Zephyr
-  - Os/Queue/Zephyr
-  - Os/Mutex/Zephyr
-  - Os/Task/Zephyr
-  - Os/Console/Zephyr
-  - Os/RawTime/Zephyr
-end note
-
-cmake --> runsh: CMake configuration complete
+cmake --> runsh: Build system prepared
 deactivate cmake
 
-== Component Generation ==
-runsh -> fpptools: Generate F' component code
+== Generate Code from FPP ==
+runsh -> fpptools: Process FPP files
 activate fpptools
-
-fpptools -> fpptools: Parse FPP files
-fpptools -> fpptools: Generate C++ component implementations
-fpptools -> fpptools: Generate serializable types
-fpptools -> fpptools: Generate topology C++
-fpptools -> fpptools: Generate component dictionaries
-
-note right of fpptools
-  Components found:
-  - Led
-  - ActiveLogger
-  - CommandDispatcher
-  - ZephyrGpioDriver
-  - ZephyrUartDriver
-  - ZephyrRateDriver
-  - FatalHandler
-  - ZephyrTime
-  - etc.
+note right
+  • Parse component definitions
+  • Generate C++ implementation files
+  • Create component dictionaries
+  • Build component topology
 end note
-
-fpptools --> runsh: Code generation complete
+fpptools --> runsh: Generated C++ code
 deactivate fpptools
 
-== Compilation Phase ==
-runsh -> compiler: Build F' OS adaptations
+== Compile Application ==
+runsh -> compiler: Build application
 activate compiler
-compiler -> compiler: Compile OS/Zephyr modules
-compiler -> compiler: Compile F' Framework modules
-compiler -> compiler: Compile Zephyr-specific drivers
-compiler -> compiler: Compile user components
-compiler -> compiler: Compile topology
-compiler --> runsh: Object files generated
+compiler -> compiler: Build F' components
+compiler -> compiler: Build Zephyr OS adaptation layer
+compiler -> compiler: Build user components
+compiler -> compiler: Build Zephyr kernel & drivers
+
+compiler -> compiler: Link final application
+
+compiler --> runsh: Final binaries
 deactivate compiler
 
-runsh -> zephyr: Build Zephyr kernel & libraries
-activate zephyr
-
-zephyr -> compiler: Compile Zephyr sources
-activate compiler
-compiler --> zephyr: Zephyr object files
-deactivate compiler
-
-zephyr --> runsh: Zephyr libraries built
-deactivate zephyr
-
-== Linking & Final Binary ==
-runsh -> linker: Link application
-activate linker
-
-linker -> linker: Combine F' & Zephyr objects
-linker -> linker: Generate zephyr.elf
-linker -> linker: Generate flash formats (hex, bin)
-
-note right of linker
-  Output binaries:
-  - zephyr.elf
-  - zephyr.bin
-  - zephyr.hex
-end note
-
-linker --> runsh: Binary creation complete
-deactivate linker
-
-runsh --> dev: Build complete (memory usage report)
+runsh --> dev: Build complete (with memory report)
 deactivate runsh
 
 @enduml
 #+end_src
 
+
 #+RESULTS:
 [[file:.assets/build_deployment_sd.png]]
 
+** LED Control Interaction Flow
 
+The following sequence diagram illustrates how a developer can interact with the LED component through the Ground Data System:
+
+#+begin_src plantuml :file .assets/led_sd.png :tangle .assets/led_sd.puml :exports results
+@startuml LED Command Sequence
+
+skinparam style strictuml
+skinparam sequenceArrowThickness 2
+skinparam sequenceGroupBorderThickness 2
+skinparam NoteBorderThickness 1
+
+title "LED Control Command Sequence"
+
+actor "User/Operator" as user
+participant "Ground Data System" as gds
+participant "Svc::CmdDispatcher" as cmdDisp
+participant "Components::Led" as led
+participant "Zephyr::ZephyrGpioDriver" as gpioDriver
+participant "Zephyr GPIO API" as gpioApi
+participant "LED Hardware" as ledHw
+
+user -> gds: Send LED_ON command
+activate gds
+
+gds -> cmdDisp: Forward command over UART
+activate cmdDisp
+
+note right of cmdDisp
+  Command format:
+  COMMAND_LED_ON(ledNumber)
+end note
+
+cmdDisp -> led: Invoke command handler
+activate led
+
+note right of led
+<code>
+void Led::LED_ON_cmdHandler(
+  FwOpcodeType opCode,
+  U32 cmdSeq,
+  U32 ledNumber)
+</code>
+end note
+
+led -> led: Validate LED number
+led -> gpioDriver: Request GPIO pin write
+activate gpioDriver
+
+note right of gpioDriver
+<code>
+ZephyrGpioDriver::gpioWrite_handler(
+  const NATIVE_INT_TYPE portNum,
+  const Logic& state)
+</code>
+end note
+
+gpioDriver -> gpioApi: Call Zephyr GPIO API
+activate gpioApi
+
+note right of gpioApi
+<code>
+gpio_pin_set_raw(
+  gpio_dev, pin, state == Logic::HIGH ? 1 : 0);
+</code>
+end note
+
+gpioApi -> ledHw: Set physical pin state
+activate ledHw
+ledHw --> gpioApi: Pin state changed
+deactivate ledHw
+
+gpioApi --> gpioDriver: Return status
+deactivate gpioApi
+
+gpioDriver --> led: Return success
+deactivate gpioDriver
+
+led -> led: Generate telemetry
+note right of led
+<code>
+this->tlmWrite_LedState(
+  ledNumber,
+  LedState::ON);
+</code>
+end note
+
+led -> cmdDisp: Command success
+deactivate led
+
+cmdDisp -> gds: Command completed successfully
+deactivate cmdDisp
+
+gds -> user: Display command status and telemetry
+deactivate gds
+
+... Time passes ...
+
+user -> gds: Send LED_OFF command
+activate gds
+
+gds -> cmdDisp: Forward command over UART
+activate cmdDisp
+
+note right of cmdDisp
+  Command format:
+  COMMAND_LED_OFF(ledNumber)
+end note
+
+cmdDisp -> led: Invoke command handler
+activate led
+
+led -> gpioDriver: Request GPIO pin write (LOW)
+activate gpioDriver
+gpioDriver -> gpioApi: Call Zephyr GPIO API
+activate gpioApi
+gpioApi -> ledHw: Set physical pin state
+activate ledHw
+ledHw --> gpioApi: Pin state changed
+deactivate ledHw
+gpioApi --> gpioDriver: Return status
+deactivate gpioApi
+gpioDriver --> led: Return success
+deactivate gpioDriver
+
+led -> led: Generate telemetry
+note right of led
+<code>
+this->tlmWrite_LedState(
+  ledNumber,
+  LedState::OFF);
+</code>
+end note
+
+led -> cmdDisp: Command success
+deactivate led
+cmdDisp -> gds: Command completed successfully
+deactivate cmdDisp
+gds -> user: Display command status and telemetry
+deactivate gds
+
+@enduml
+#+end_src
+
+The interaction flow demonstrates:
+
+1. *System Initialization*: When the system boots, components register their commands with the Command Dispatcher
+2. *Command Flow*:
+   - Developer sends an "LED_ON" command through the GDS web interface
+   - Command travels via UART to the Command Dispatcher
+   - Command Dispatcher validates and routes the command to the LED component
+   - LED component updates its state and controls the GPIO pin via the Zephyr GPIO API
+   - Command response flows back to the GDS
+3. *Telemetry Flow*:
+   - LED component periodically reports its state as telemetry
+   - Telemetry is displayed in the GDS for monitoring
+
+This architecture provides a clean separation between the application logic (LED control), communication (UART and Command Dispatcher), and hardware interfacing (GPIO drivers). The F' framework handles command routing, telemetry collection, and event logging, while Zephyr provides the real-time OS capabilities and hardware abstraction.
+
+** Key Benefits
+
+- *Component-Based Design*: F' enables robust, modular components with formal interfaces
+- *Hardware Abstraction*: Zephyr provides consistent APIs across different hardware platforms
+- *Cross-Platform Support*: Applications can be ported to different boards with minimal changes
+- *Real-Time Capabilities*: Zephyr RTOS delivers deterministic timing and scheduling
+- *Development Tools*: Integrated build system and ground data system simplify development
+- *Flight Heritage*: F' has been used in multiple NASA flight projects
+
+This reference implementation serves as a starting point for developing more complex embedded applications that require the robustness of F' combined with the flexibility of Zephyr RTOS.
 * Getting Started
 1. *Retrieve the submodule sources*
    Since this project relies on some sources like fprime which are tracked as submodules we need to pull them down using the following:
