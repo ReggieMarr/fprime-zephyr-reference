@@ -393,6 +393,9 @@ deactivate gds
 @enduml
 #+end_src
 
+#+RESULTS:
+[[file:.assets/led_sd.png]]
+
 The interaction flow demonstrates:
 
 1. *System Initialization*: When the system boots, components register their commands with the Command Dispatcher
