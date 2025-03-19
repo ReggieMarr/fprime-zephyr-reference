@@ -73,6 +73,8 @@ target_link_libraries(app PUBLIC
     BaseDeployment_Top
 )
 
+# ensure's that zephyr's syscall headers are generated prior to referencing them
+# in fprime targets
 add_dependencies(app zephyr_generated_headers)
 
 set_target_properties(Svc_FatalHandler PROPERTIES EXCLUDE_FROM_ALL TRUE)

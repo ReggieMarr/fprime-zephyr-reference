@@ -5,74 +5,347 @@ This project demonstrates the integration of the F' (F Prime) flight software fr
 By combining F' and Zephyr, this project offers a solid foundation for flight software and other critical embedded applications with formal interfaces, robust architecture, and broad hardware compatibility.
 
 The project structure includes:
-+ An [[https://fprime.jpl.nasa.gov/latest/docs/user-manual/overview/proj-dep/][F' deployment]] found @ ~./FlightSoftware~:
++ An [[https://fprime.jpl.nasa.gov/latest/docs/user-manual/overview/proj-dep/][F' deployment]] found @ ~./BaseDeployment~:
   Contains the F' application configuration and deployment-specific code
   This linux application leverages both standard and custom components to sample data via a UDP connection and propagates that data to it's internal components (which can be interfaced with via the [[https://fprime.jpl.nasa.gov/latest/docs/user-manual/overview/gds-introduction/][F' ground control system, fprime-gds]]).
-+ ~Components~: Demonstrates how generic F' components can be integrated (currently just a simple LED component)
-+ ~bare-zephyr-app~: A minimal Zephyr-only implementation for comparison with the F' approach
-+ A developer environment interfaced with via ~./run.sh~.
-  This bash script orchestrates the above mentioned applications within a virtual environment for building, running and testing purposes.
-
++ ~Components~: Demonstrates integration of custom F' components in a deployment agnostic manner.
++ ~bare-zephyr-app~: A minimal Zephyr-only implementation (i.e. sans F').
++ A developer environment and commonly used commands provided through the ~./run.sh~ bash script.
+  This orchestrates the above mentioned applications within a virtual environment for building, running and testing purposes.
 
 The following [[https://c4model.com/diagrams/container][C4 container diagram]] illustrates the relationships between these functional components.
 
-#+begin_src plantuml :file .assets/project_overview.png :tangle .assets/project_overview.puml :exports results
-@startuml F' Zephyr Component Diagram
-
-!include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Container.puml
+#+begin_src plantuml :file .assets/deployment_cd.png :tangle .assets/deployment_cd.puml :exports results
+@startuml F' Zephyr System Architecture
 !include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Component.puml
+!include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Context.puml
+
 !define ICONURL https://raw.githubusercontent.com/tupadr3/plantuml-icon-font-sprites/v3.0.0/icons
+!include ICONURL/font-awesome-5/docker.puml
+!include ICONURL/font-awesome-5/network_wired.puml
 !include ICONURL/font-awesome-5/microchip.puml
 !include ICONURL/font-awesome-5/desktop.puml
-!include ICONURL/font-awesome-5/download.puml
-!include ICONURL/font-awesome-5/broadcast_tower.puml
+!include ICONURL/font-awesome-5/sitemap.puml
 !include ICONURL/font-awesome-5/cube.puml
-!include ICONURL/font-awesome-5/network_wired.puml
-!include ICONURL/font-awesome-5/cubes.puml
-!include ICONURL/material/settings_ethernet.puml
-!include ICONURL/material/vertical_align_bottom.puml
-!include ICONURL/material/vertical_align_top.puml
-!include ICONURL/material/lightbulb_outline.puml
-!include ICONURL/govicons/world.puml
-!include ICONURL/material/usb.puml
-!include ICONURL/font-awesome-5/user.puml
+!include ICONURL/font-awesome-5/cogs.puml
+!include ICONURL/font-awesome-5/toolbox.puml
+!include ICONURL/font-awesome-5/sitemap.puml
+!include ICONURL/material/exit_to_app.puml
 
-title "F' Zephyr Reference Application - Component Architecture"
+LAYOUT_WITH_LEGEND()
 
-Component(app, "app", "Zephyr Executable", "Main application binary")
+HIDE_STEREOTYPE()
+title "F' Zephyr Reference Deployment"
 
-Container_Boundary(fprimeDeployment, "F' Deployment") {
-    Component(baseDeploymentTop, "BaseDeployment_Top", "F' Topology", "Instatiates and configures F' components", $sprite="network_wired")
-    Component(ledComponent, "LED Component", "F' Component", "Controls LED hardware", $sprite="lightbulb_outline")
-}
+Person(developer, "Developer", "Uses and develops Deployment Applications")
 
-Container_Boundary(fprimeFramework, "F' Framework") {
-    Component(autocoder, "F' Autocoder", "Code Generator", "Generates C++ from FPP specifications")
-    Component(coreComponents, "F' Core Components", "Framework Services", "Core F' components and services")
-}
+Container(devEnv, "Developer Environment", "Docker + Bash", "Supports building, running, and testing in virtual environment", $sprite="docker")
+Container(gds, "Ground Data System", "F' Application GUI", "Web Based Developer UI connects to F' via TCP", $sprite="desktop")
+Container(deployment, "Reference Deployment", $descr="F' built with Zephyr for OS and Driver support", $techn="Application", $sprite="sitemap")
 
-Container_Boundary(zephyrRTOS, "Zephyr RTOS") {
-    Component(zephyrInterface, "zephyr_interface", "Interface Library", "Provides access to Zephyr APIs")
-}
+System_Ext(samv71, "SamV71 Xplained Ultra", $type="Reference Board", $sprite="microchip")
 
-' Relationships
-Rel(app, baseDeploymentTop, "links to")
-Rel(baseDeploymentTop, components, "uses")
-Rel(components, ledComponent, "includes")
-Rel(baseDeploymentTop, zephyrInterface, "links to")
-Rel(components, autocoder, "generated by")
-Rel(baseDeploymentTop, coreComponents, "uses")
-
-' Build Process Relationships
-Rel_U(app, autocoder, "built with")
+Rel_D(developer, devEnv, "Uses", "run.sh")
+Rel_D(devEnv, deployment, "Builds/Runs", "F' + zephyr sdk via cmake")
+Rel_R(devEnv, gds, "Runs", "run.sh")
+BiRel(developer, gds, "Builds/Runs", "Web UI @ localhost:5000")
+Rel_R(deployment, samv71, "Targets", "Physical hardware")
+BiRel_U(samv71, gds, "Interacts with", "Serial connection")
 
 @enduml
 #+end_src
 
 #+RESULTS:
-[[file:.assets/project_overview.png]]
+[[file:.assets/deployment_cd.png]]
 
-** Developer Tools and Usage
+This reference implementation serves as a starting point for developing more complex embedded applications that require the robustness of F' combined with the flexibility of Zephyr RTOS.
+
+** Device control demo
+
+The following sequence diagram illustrates how a developer can interact with the LED component through the Ground Data System:
+
+The interaction flow demonstrates:
+
+1. *System Initialization*: When the system boots, components register their commands with the Command Dispatcher
+2. *Command Flow*:
+   - Developer sends an "LED_ON" command through the GDS web interface
+   - Command travels via UART to the Command Dispatcher
+   - Command Dispatcher validates and routes the command to the LED component
+   - LED component updates its state and controls the GPIO pin via the Zephyr GPIO API
+   - Command response flows back to the GDS
+3. *Telemetry Flow*:
+   - LED component periodically reports its state as telemetry
+   - Telemetry is displayed in the GDS for monitoring
+
+#+begin_src plantuml :file .assets/led_sd.png :tangle .assets/led_sd.puml :exports results
+@startuml LED Command Sequence
+
+skinparam style strictuml
+skinparam sequenceArrowThickness 2
+skinparam sequenceGroupBorderThickness 2
+skinparam NoteBorderThickness 1
+
+title "LED Control Command Sequence"
+
+actor "User/Operator" as user
+participant "Ground Data System" as gds
+participant "Svc::CmdDispatcher" as cmdDisp
+participant "Components::Led" as led
+participant "Zephyr::ZephyrGpioDriver" as gpioDriver
+participant "Zephyr GPIO API" as gpioApi
+participant "LED Hardware" as ledHw
+
+user -> gds: Send LED_ON command
+activate gds
+
+gds -> cmdDisp: Forward command over UART
+activate cmdDisp
+
+note right of cmdDisp
+  Command format:
+  COMMAND_LED_ON(ledNumber)
+end note
+
+cmdDisp -> led: Invoke command handler
+activate led
+
+note right of led
+<code>
+void Led::LED_ON_cmdHandler(
+  FwOpcodeType opCode,
+  U32 cmdSeq,
+  U32 ledNumber)
+</code>
+end note
+
+led -> led: Validate LED number
+led -> gpioDriver: Request GPIO pin write
+activate gpioDriver
+
+note right of gpioDriver
+<code>
+ZephyrGpioDriver::gpioWrite_handler(
+  const NATIVE_INT_TYPE portNum,
+  const Logic& state)
+</code>
+end note
+
+gpioDriver -> gpioApi: Call Zephyr GPIO API
+activate gpioApi
+
+note right of gpioApi
+<code>
+gpio_pin_set_raw(
+  gpio_dev, pin, state == Logic::HIGH ? 1 : 0);
+</code>
+end note
+
+gpioApi -> ledHw: Set physical pin state
+activate ledHw
+ledHw --> gpioApi: Pin state changed
+deactivate ledHw
+
+gpioApi --> gpioDriver: Return status
+deactivate gpioApi
+
+gpioDriver --> led: Return success
+deactivate gpioDriver
+
+led -> led: Generate telemetry
+note right of led
+<code>
+this->tlmWrite_LedState(
+  ledNumber,
+  LedState::ON);
+</code>
+end note
+
+led -> cmdDisp: Command success
+deactivate led
+
+cmdDisp -> gds: Command completed successfully
+deactivate cmdDisp
+
+gds -> user: Display command status and telemetry
+deactivate gds
+
+... Time passes ...
+
+user -> gds: Send LED_OFF command
+activate gds
+
+gds -> cmdDisp: Forward command over UART
+activate cmdDisp
+
+note right of cmdDisp
+  Command format:
+  COMMAND_LED_OFF(ledNumber)
+end note
+
+cmdDisp -> led: Invoke command handler
+activate led
+
+led -> gpioDriver: Request GPIO pin write (LOW)
+activate gpioDriver
+gpioDriver -> gpioApi: Call Zephyr GPIO API
+activate gpioApi
+gpioApi -> ledHw: Set physical pin state
+activate ledHw
+ledHw --> gpioApi: Pin state changed
+deactivate ledHw
+gpioApi --> gpioDriver: Return status
+deactivate gpioApi
+gpioDriver --> led: Return success
+deactivate gpioDriver
+
+led -> led: Generate telemetry
+note right of led
+<code>
+this->tlmWrite_LedState(
+  ledNumber,
+  LedState::OFF);
+</code>
+end note
+
+led -> cmdDisp: Command success
+deactivate led
+cmdDisp -> gds: Command completed successfully
+deactivate cmdDisp
+gds -> user: Display command status and telemetry
+deactivate gds
+
+@enduml
+#+end_src
+
+#+RESULTS:
+[[file:.assets/led_sd.png]]
+
+This architecture provides a clean separation between the application logic (LED control), communication (UART and Command Dispatcher), and hardware interfacing (GPIO drivers). The F' framework handles command routing, telemetry collection, and event logging, while Zephyr provides the real-time OS capabilities and hardware abstraction.
+
+* Getting Started
+1. *Retrieve the submodule sources*
+   Since this project relies on some sources like fprime which are tracked as submodules we need to pull them down using the following:
+   ~git submodule update --init --recursive --depth 1 --recommend-shallow~
+   Note that this attempts to pull only the references needed by the .gitmodules in order to pull the sources quicker so not all branches will be available.
+2. *Setup the docker environment*
+   To do so use the ~./run.sh~ script like so to build the docker image:
+   #+begin_src bash
+   ./run.sh build docker --clean
+   #+end_src
+
+   *This may take a while (especially if using WSL) so take the time to complete other steps or otherwise get familiarize with the rest of the project.*
+   When complete you should see something like this:
+   #+begin_src bash
+   ❯ ./run.sh build docker --clean
+   Running repo check
+   Executing: git fetch -q origin
+   Retrieving requirements for submodule 'deps/fprime' via GitHub REST API...
+   Executing: curl -s -L "https://api.github.com/repos/ReggieMarr/fprime-zephyr-led-blinker/contents/.gitmodules?ref=01d983c62a366b4c0a1f622ec9d9695517e1e4f7" > /tmp/github_response.json
+   Executing: curl -s -L "https://api.github.com/repos/ReggieMarr/fprime-zephyr-led-blinker/contents/deps/fprime?ref=01d983c62a366b4c0a1f622ec9d9695517e1e4f7" > /tmp/github_response.json
+   DEBUG: Submodule url: https://github.com/reggiemarr/fprime.git
+   submodule_repo reggiemarr/fprime submodule_commit: 12cb7105c1dee550d659302355aa21725abea876 remote_requirements_path requirements.txt temp_dir_path ./tmp.kkyb4Fc35O
+   Fetching requirements file: requirements.txt
+   Executing: curl -s -L "https://api.github.com/repos/reggiemarr/fprime/contents/requirements.txt?ref=12cb7105c1dee550d659302355aa21725abea876" > "./tmp.kkyb4Fc35O/requirements.txt.json"
+   temp path ./tmp.kkyb4Fc35O
+   Saving requirements for deps/fprime to combined_requirements.txt
+   Executing: sort -u "./tmp.kkyb4Fc35O/combined_requirements.txt" > "combined_requirements.txt"
+   Executing: docker compose --progress=plain --env-file=/home/reggiemarr/Projects/fprime-zephyr-reference/.env build zephyr --no-cache --build-arg FSW_WDIR=/fprime-zephyr-reference --build-arg HOST_UID=1000 --build-arg HOST_GID=1000 --build-arg REQUIREMENTS_FILE=./tmp.kkyb4Fc35O/combined_requirements.txt; rm -rf ./tmp.kkyb4Fc35O/combined_requirements.txt
+   #0 building with "default" instance using docker driver
+
+   #1 [zephyr internal] load build definition from Dockerfile
+   #1 transferring dockerfile: 2.87kB done
+   #1 DONE 0.0s
+   ...
+   #23 [zephyr] exporting to image
+   #23 exporting layers
+   #23 exporting layers 11.0s done
+   #23 writing image sha256:e7ffaaa1aa7d29b79126d4354cbd0ea1ec980e078a24cdd30fe63916d39d0d85 done
+   #23 naming to ghcr.io/reggiemarr/fprime-zephyr-reference:fsw_main done
+   #23 DONE 11.0s
+
+   #24 [zephyr] resolving provenance for metadata file
+   #24 DONE 0.0s
+   zephyr  Built
+   #+end_src
+
+   You can confirm it built properly with the following:
+   #+begin_src bash
+   ❯ docker image ls
+   REPOSITORY                                                                      TAG                                                       IMAGE ID       CREATED         SIZE
+   ghcr.io/reggiemarr/fprime-zephyr-reference                                      fsw_main                                                  e7ffaaa1aa7d   2 minutes ago   4.58GB
+   #+end_src
+
+   *Note:* This pulls in all necessary system dependencies however ~./run.sh~ script needs to mount the files on the host machine to make them accessible in the container.
+   You can test this out by running ~./run.sh inspect~ and explore the development environment.
+
+3. *Add IDE support (optional but recommended)*
+   + To enhance your experience in reading the provided ~.md~ / ~.org~ docs install some plugin/extension/tool capable of syntax highlighting, rendering, and/or inline image display.
+
+   + F' specific support
+      F' provides syntax highlighting, reference matching and more for the following editors:
+     + [[https://github.com/nasa/fpp/tree/main/editors/emacs][Emacs]]
+       Note if using [[https://github.com/doomemacs/doomemacs][doomemacs]] you can add the following to your ~packages.el~:
+       #+begin_src elisp
+          (package! fpp-mode
+          :recipe (:host github
+                  :repo "nasa/fpp"
+                  :files ("editors/emacs/fpp-mode.el")))
+       #+end_src
+     + [[https://github.com/nasa/fpp/tree/main/editors/vim][Vim/Neovim]]
+     + [[https://github.com/fprime-community/vscode-fpp][VSCode]]
+
+   + Enhanced Autocompletion/Search/more with [[https://microsoft.github.io/language-server-protocol/][LSP support]]
+        By default a ~compile_commands.json~ gets generated when building the deployment.
+        If your IDE utilizes an LSP like [[https://fanpengkong.com/post/emacs-ccpp/emacs-ccpp/][clangd]] then this can be used to enhance your experience.
+
+        Note that by default the ~compile_commands.json~ is produced in ~./FlightSoftware/build-artifacts/[platform]/BaseDeployment/dict~
+        and the paths in the build info are specific to the environment which it is built in.
+        By default ~./run.sh~ accounts for this as described here: [[Building/Running the FlightSoftware deployment][Building/Running the FlightSoftware deployment]].
+
+4. If you've gotten this far you can leverage the ~./run.sh~ script to build, run, and test the project.
+
+** Simplifying dev iterations with the ~./run.sh~ script
+This shell script simplifies the process of building, running, and testing software within a containerized development environment.
+
+Note this script depends on having bash and docker installed, most testing has been done with linux but WSL2 has been known to work as well.
+
+It's features and capabilities are briefly described like so:
+
+#+begin_src shell
+❯ ./run.sh --help
+Usage: run.sh [OPTIONS] COMMAND [ARGS]
+
+Options:
+  --daemon                           Run containers in detached mode (remove interactive TTY).
+  --verbose                          Run command with verbose logs enabled.
+  --debug                            Enable debug-related configurations (such as gdb).
+  --clean                            Force cleaning of build directories or caches
+                                     (e.g., rebuild sources from scratch).
+  --local                            Run related command in such a way that doesn't
+                                     rely on network/remote resources.
+  --help                             Display this help message.
+
+Commands:
+  pull                               Retrieve the latest source code and docker image for this branch (main).
+  build <target>                     Builds a target component, specified by the second argument.
+                                     Note the following example build targets:
+                                     fsw           Build the Flight Software application
+                                     docker        Build the Docker image
+
+  exec <target>                      Executes a target inside the container specified by the second argument.
+                                     Note the following example build targets:
+                                     fsw                  Run the Flight Software application
+                                     gds                  Launch the Flight Software Ground Data System (GDS)
+  deploy                             Deploy a target to some execution environment.
+                                     fsw                  Deploy the Flight Software application
+                                     gds                  Deploy the Ground Data System (GDS)
+
+  inspect                Opens an interactive shell (bash) inside the default service container.
+
+Examples:
+  "./run.sh" build fsw --clean
+  "./run.sh" exec fsw --daemon
+#+end_src
 
 *** Development Environment
 This project leverages Docker to provide a consistent development environment with all necessary dependencies pre-installed. The included tooling supports:
@@ -80,31 +353,6 @@ This project leverages Docker to provide a consistent development environment wi
 - Deploying applications to hardware
 - Testing and monitoring via F' Ground Data System (GDS)
 - FPP modeling and code generation
-
-*** Building the Application
-To build the application for a specific board (Teensy 4.1 used as example):
-
-#+begin_src sh
-# Using the convenience script
-./run.sh generate teensy41
-./run.sh build
-
-# Or manually with fprime-util
-fprime-util generate -DBOARD=teensy41
-fprime-util build -j4
-#+end_src
-
-To switch to a different target board:
-
-#+begin_src sh
-# Clear previous build artifacts first
-fprime-util purge zephyr -f
-# Then generate for new board
-fprime-util generate -DBOARD=new_board_name
-fprime-util build -j4
-#+end_src
-
-Board-specific configurations can be managed through the ~proj.conf~ file and board overlay files in the ~boards/~ directory.
 
 *** Uploading to Hardware
 After building, locate the correct binary format for your board in ~build-fprime-automatic-zephyr/zephyr/~:
@@ -116,9 +364,6 @@ Upload using the appropriate method for your board (e.g., for Teensy, the Teensy
 To connect to the device for monitoring and commanding:
 
 #+begin_src sh
-# First ensure you have access to serial device
-sudo chmod 0777 /dev/ttyACM0
-
 # Start the Ground Data System
 fprime-gds -n --dictionary ./build-artifacts/zephyr/LedBlinker/dict/LedBlinkerTopologyAppDictionary.xml --comm-adapter uart --uart-device /dev/ttyACM0 --uart-baud 115200
 #+end_src
@@ -131,19 +376,322 @@ To create new components:
 4. Add components to the topology in ~Top.fpp~
 5. Rebuild the project
 
-*** Using the Docker Environment
-The included ~run.sh~ script provides a convenient way to work within the Docker environment:
+*** Development workflows
+This script can be used for a variety of workflows to orchestrate the projects functional components either for unit testing or in order to make them interact.
 
-#+begin_src sh
-# Enter shell in the Docker container
-./run.sh shell
+Note that the ~./run.sh~ leverages the ~docker-compose.yml~ and ~.env~ files to set environment variables and mount files and leverage the network on the host (e.g. your machine). This means that changes to source files made on the host will effect actions taken in the development environment and visa versa. It is for this reason that Dockerfile creates a user (creatively named "user") which should have the same UID and GID as the host machine, thereby avoiding the creation of "root-owned files" which would necessitate the use of ~sudo~ by the host.
 
-# Build the project
-./run.sh build
+Also note that all shell commands executed via the ~./run.sh~ script will be echo'd like so:
 
-# Run GDS
-./run.sh gds
-
-# Clean build artifacts
-./run.sh clean
+#+begin_src bash
+❯ ./run.sh inspect
+Container devenv-zephyr is not running, using docker compose run...
+Executing: docker compose run --name devenv-zephyr --rm --user 1000:1000 --remove-orphans -it zephyr bash
+(venv) user@reggiemarr-ThinkPad-T15p-Gen-1:/fprime-zephyr-reference$
 #+end_src
+
+*** Building/Running the FlightSoftware deployment
+F' applications require a somewhat complex build process in part due to it's use of it's [[https://nasa.github.io/fpp/fpp-users-guide.html][custom DSL (fpp)]], and it's [[https://fprime.jpl.nasa.gov/latest/docs/user-manual/cmake/cmake-intro/][CMake API]].
+A consequence of this is that changes to ~fpp~ files require that ~C++~ sources are re-generated before building the application.
+
+Our shell script deletes any previously existing build directory and ensures source file regeneration when the ~--clean~ flag is used like so:
+
+#+begin_src shell
+./run.sh build fsw --clean
+#+end_src
+
+Note that when we want to rebuild and only ~C++~ files have changed we can do so by issuing the same command without the ~--clean~ flag.
+Additionally note that upon sucessfully building the deployment the ~./run.sh~ script will attempt to edit a ~.clangd~ file if it exists.
+
+This file typically looks something like this:
+
+#+begin_src yaml
+CompileFlags:
+  CompilationDatabase: ./FlightSoftware/build-fprime-automatic-native/
+  Compiler: gcc
+#+end_src
+The modification of the associated ~compile_commands.json~ sets the paths from those generated within the docker container to paths that exist on your host (as it pertains to F' source files).
+
+And if placed at the root of your project can be used with [[https://clangd.llvm.org/][clangd]] for LSP features in your IDE (if configured).
+
+Once we have built the deployment we should see our executable in ~./FlightSoftware/build-artifacts/Linux/BaseDeployment/bin~
+This executable can be run in like so:
+
+#+begin_src bash
+❯ ./run.sh exec fsw
+Container rdx-worker is not running, using docker compose run...
+Executing: docker compose run --rm --user 1000:1000 --remove-orphans -w /RDX -it rdx bash -c "./FlightSoftware/build-artifacts/Linux/'BaseDeployment'/bin/'BaseDeployment' -a 0.0.0.0 -p 50000"
+Hit Ctrl-C to quit
+EVENT: (3334) (2:1740450749,338108) WARNING_HI: (prmDb) PrmFileReadError : Parameter file read failed in stage OPEN (0) with record 0 and error 1
+EVENT: (1280) (2:1740450749,338183) DIAGNOSTIC: (cmdDisp) OpCodeRegistered : Opcode 0x500 registered to port 0 slot 0
+...
+EVENT: (512) (2:1740450749,338752) DIAGNOSTIC: (rateGroup1) RateGroupStarted : Rate group started.
+EVENT: (768) (2:1740450749,338788) DIAGNOSTIC: (rateGroup2) RateGroupStarted : Rate group started.
+EVENT: (1024) (2:1740450749,338822) DIAGNOSTIC: (rateGroup3) RateGroupStarted : Rate group started.
+[WARNING] ReceiveTask high task priority of 100 clamped to 99
+[WARNING] Failed to open port with status -4 and errno 111
+#+end_src
+
+If you're seeing this output that's good news ! It means that the application has started.
+
+Note that you may see this message if you run without sudo and the fsw did not have capabilities set appropriate (nominally ~./run.sh build~ should do this):
+#+begin_src bash
+[NOTE] Task Permissions:
+[NOTE]
+[NOTE] You have insufficient permissions to create a task with priority and/or cpu affinity.
+[NOTE] A task without priority and affinity will be created.
+[NOTE]
+[NOTE] There are three possible resolutions:
+[NOTE] 1. Use tasks without priority and affinity using parameterless start()
+[NOTE] 2. Run this executable as a user with task priority permission
+[NOTE] 3. Grant capability with "setcap 'cap_sys_nice=eip'" or equivalent
+#+end_src
+
+It does not affect any functional components for this project however it can be simply avoided by running the executable with ~sudo~.
+
+When run you should see a number of events that get generated at startup (opcode registration, rate group starting ect.) but now we want to actually interact with the deployment, the easiest way to do so is via the ~fprime-gds~ and the fact that is not running right now is why we get the ~Failed to open port with status -4 and errno 111~ warning.
+
+This can be done like so:
+#+begin_src bash
+❯ ./run.sh exec gds
+Container rdx-worker is not running, using docker compose run...
+Executing: docker compose run --rm --user 1000:1000 --remove-orphans  rdx bash -c "fprime-gds  --dictionary /RDX/FlightSoftware/build-artifacts/Linux/BaseDeployment/dict/BaseDeploymentTopologyDictionary.json --no-app --log-to-stdout"
+[2025-02-24 21:41:21,476] [INFO] root: Logging system initialized!
+[INFO] Ensuring comm[ip] Application is stable for at least 1 seconds
+[INFO] Running Application: /home/user/venv/bin/python3
+[2025-02-24 21:41:21,608] [INFO] root: Logging system initialized!
+[2025-02-24 21:41:21,610] [INFO] comm: Starting uplinker/downlinker connecting to FSW using ip with fprime
+[2025-02-24 21:41:21,611] [INFO] udp_handler: Server connected to 0.0.0.0:50000
+[2025-02-24 21:41:21,612] [INFO] transport: Incoming binding to: ipc:///tmp/fprime-server-in
+[2025-02-24 21:41:22,112] [INFO] transport: Outgoing binding to: ipc:///tmp/fprime-server-out
+[2025-02-24 21:41:22,368] [INFO] tcp_handler: Server connected to 0.0.0.0:50000
+[INFO] Ensuring HTML GUI is stable for at least 2 seconds
+[INFO] Running Application: /home/user/venv/bin/python3
+ * Tip: There are .env or .flaskenv files present. Do "pip install python-dotenv" to use them.
+[2025-02-24 21:41:22,720] [INFO] root: Logging system initialized!
+[2025-02-24 21:41:22,727] [INFO] transport: Outgoing connecting to: ipc:///tmp/fprime-server-in
+[2025-02-24 21:41:22,728] [INFO] transport: Incoming connecting to: ipc:///tmp/fprime-server-out
+ * Serving Flask app 'fprime_gds.flask.app'
+ * Debug mode: off
+[INFO] Launched UI at: http://127.0.0.1:5000/
+[INFO] F prime is now running. CTRL-C to shutdown all components.
+#+end_src
+
+This provides us with a web-based interface at http://127.0.0.1:5000/ which looks like this:
+[[file:.assets/gds_screenshot.png]]
+
+Note that the green light in the right corner and the updating of telemetry is an indication that the fsw is running and has connected to the gds.
+
+*** For all else, use interactively with ~inspect~:
+This provides an interactive bash session which can explore the development environment and interact with the tools and executables it contains directly.
+Note that this can be called in multiple sessions and since it shares the network and files of the host machines this can be used to test interactions between various functional components (or executing them with custom arguments).
+
+#+begin_src bash
+❯ whoami
+reggiemarr
+❯ ./run.sh inspect
+Container devenv-zephyr is not running, using docker compose run...
+Executing: docker compose run --name devenv-zephyr --rm --user 1000:1000 --remove-orphans -it zephyr bash
+(venv) user@reggiemarr-ThinkPad-T15p-Gen-1:/fprime-zephyr-reference$ whoami
+user
+(venv) user@reggiemarr-ThinkPad-T15p-Gen-1:/fprime-zephyr-reference$ pwd
+/fprime-zephyr-reference
+#+end_src
+
+* Integrating the F' and Zephyr build systems
+F' and Zephyr both rely on sophisticated build system's to support a wide array of configuration options to maximize the utility of their respective feature sets.
+This however does present some integration challenges such as:
++ Separation of concerns
++ Managing autocoded dependencies
++ Conflicts between host tools
+
+Namely the seperation of concerns between the F' layer
+Both Zephyr and F' provide sophisticated build system which supports a wide array
+The build process for F' Zephyr applications combines two sophisticated build systems F Prime's FPP-based component generation system and Zephyr's CMake-based hardware configuration system—into a unified workflow that generates deployable firmware.
+
+When a developer runs =./run.sh build BaseDeployment=, the following sequence occurs:
+
+1. *Configuration Phase*: The build system first configures the environment by:
+   - Loading board-specific definitions from the Zephyr platform (device tree, pin mappings, etc.)
+   - Processing Kconfig options that determine which Zephyr features to include
+   - Setting up F' toolchain settings to target the Zephyr platform
+   - Filtering F' modules to include only those compatible with Zephyr
+
+2. *Code Generation Phase*: The FPP toolchain processes the declarative component specifications:
+   - Parses FPP component definitions that describe interfaces, commands, events, and telemetry
+   - Generates C++ implementation files with proper ports and interfaces
+   - Creates component dictionaries for ground system interpretation
+   - Builds the component topology that defines component connections
+
+3. *Compilation Phase*: The selected compiler builds the application by:
+   - Compiling F' core framework components
+   - Building the Zephyr OS adaptation layer (Os/Memory/Zephyr, Os/Task/Zephyr, etc.)
+   - Compiling user-defined components (like the LED component)
+   - Building Zephyr-specific drivers (ZephyrGpioDriver, ZephyrUartDriver)
+   - Compiling the Zephyr kernel with configured options
+
+4. *Linking Phase*: The build process concludes by:
+   - Linking all object files into a unified executable
+   - Generating binary formats appropriate for flashing (ELF, HEX, BIN)
+   - Reporting memory usage statistics for the target board
+
+This integrated build process enables F' component-based design while leveraging Zephyr's extensive hardware support, producing deployable firmware that can run on a wide range of embedded targets while maintaining the robust, formally-defined interfaces of the F' framework.
+
+The final binaries are located in =build-fprime-automatic-zephyr/zephyr/= and include formats such as =zephyr.elf=, =zephyr.hex=, and =zephyr.bin= depending on the target platform requirements.
+
+#+begin_src plantuml :file .assets/project_build_cd.png :tangle .assets/project_build_cd.puml :exports results
+@startuml F' Zephyr System Architecture
+!include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Component.puml
+!include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Context.puml
+
+!define ICONURL https://raw.githubusercontent.com/tupadr3/plantuml-icon-font-sprites/v3.0.0/icons
+!include ICONURL/font-awesome-5/docker.puml
+!include ICONURL/font-awesome-5/network_wired.puml
+!include ICONURL/font-awesome-5/microchip.puml
+!include ICONURL/font-awesome-5/desktop.puml
+!include ICONURL/font-awesome-5/sitemap.puml
+!include ICONURL/font-awesome-5/cube.puml
+!include ICONURL/font-awesome-5/cogs.puml
+!include ICONURL/font-awesome-5/toolbox.puml
+!include ICONURL/material/exit_to_app.puml
+
+HIDE_STEREOTYPE()
+/'
+ ' title "F' Zephyr Reference Application - System Architecture"
+ '/
+
+Boundary(deployment, "F' Zephyr Deployment") {
+    Container(main, "Main.cpp executable", "Run deployment setup and main loop", $techn="Application", $sprite="exit_to_app")
+
+    Boundary(libFprime, "F' components Libraries") {
+        Component(ledComp, "Components::Led", "Provide LED Device Abstraction", $descr="Custom Component", $techn="Static Library", $sprite="cube")
+        Component(deploymentTopology, "BaseDeployment::Top", "Configures and instantiates deployment", $descr="Topology Component", $techn="Static Library", $sprite="cube")
+        Container(fprimeCore, "fprime", $descr="Standard Components", $techn="Static Libraries", $sprite="network_wired")
+        Container(zephyrFprimeToolChain, "fprime-zephyr", $descr="Toolchain Components", $techn="Static Libraries", $sprite="toolbox")
+    }
+    Container(zephyrInterface, "Zephyr Interface", $descr="RTOS, Kernel, and driver API", $techn="Static Library", $sprite="cogs")
+}
+
+/'
+ ' Person(developer, "Developer", "Uses and develops Deployment Applications")
+ ' System_Ext(samv71, "SamV71 Xplained Ultra", $type="Reference Board", $sprite="microchip")
+ '
+ ' Container(gds, "Ground Data System", "Operator Interface", $techn="Application", $sprite="display")
+ ' Rel(developer, deployment, "Builds/Runs", "run.sh")
+ ' BiRel(developer, gds, "Builds/Runs", "Web UI @ localhost:5000")
+ ' BiRel_D(gds, samv71, "Interacts with", "Serial connection")
+ ' Rel_R(zephyrInterface, samv71, "Targets", "Physical hardware")
+ '/
+
+' Application Component Relationships
+Rel_R(main, libFprime, "Links against")
+Rel_R(main, zephyrInterface, "Links against")
+Rel(deploymentTopology, fprimeCore, "Instantiates/Configures", "Core Components")
+Rel(deploymentTopology, zephyrFprimeToolChain, "Instantiates/Configures", "Platform Drivers")
+
+' User Components to Core/Platform
+Rel(ledComp, fprimeCore, "Uses", "Commands, Telemetry, Events")
+Rel(ledComp, zephyrFprimeToolChain, "Uses", "GPIO Control")
+
+' Layer Connections
+Rel_U(zephyrFprimeToolChain, fprimeCore, "Provides", "Component implementations")
+Rel_D(zephyrFprimeToolChain, zephyrInterface, "Implements", "RTOS services")
+Rel_U(zephyrInterface, zephyrFprimeToolChain, "Provides", "Driver APIs")
+
+@enduml
+#+end_src
+
+#+RESULTS:
+[[file:.assets/project_build_cd.png]]
+
+
+The architecture consists of several key layers:
+
+- *Application Components*: Custom components like the LED controller that implement application-specific logic
+- *F' Core Framework*: Standard services for command/telemetry handling, event logging, and scheduling
+- *F' Zephyr Toolchain*: Platform-specific implementations that bridge F' to Zephyr
+- *Zephyr RTOS*: Provides real-time scheduling, threading, and system services
+- *Zephyr Hardware Abstraction*: Board-specific drivers that interface with physical hardware
+- *Ground Data System (GDS)*: Provides command and monitoring interfaces for developers
+
+This layered design enables portability by isolating hardware-specific code in the lower layers while allowing application logic to use standard interfaces. The ~run.sh~ script simplifies the development and deployment process by providing a consistent interface for building, running, and testing the application.
+
+
+#+begin_src plantuml :file .assets/build_deployment_sd.png :tangle .assets/build_deployment_sd.puml :exports results
+@startuml F' Zephyr Build Process
+
+skinparam sequenceArrowThickness 2
+skinparam sequenceBoxBorderColor #0B5394
+skinparam NoteBackgroundColor #E3F2FD
+skinparam NoteBorderColor #2196F3
+
+title F' Zephyr Reference Application - Build Process
+
+actor "Developer" as dev
+participant "run.sh" as runsh
+participant "CMake" as cmake
+participant "Zephyr Build" as zephyr
+participant "F' Build" as fprime
+participant "FPP Tools" as fpptools
+participant "Compiler/Linker" as compiler
+
+dev -> runsh: ./run.sh build BaseDeployment
+activate runsh
+
+== Configure Build Environment ==
+runsh -> cmake: Configure with board target
+activate cmake
+
+cmake -> zephyr: Find Zephyr package
+activate zephyr
+note right
+  • Process board definition
+  • Handle device tree & overlays
+  • Process Kconfig options
+end note
+zephyr --> cmake: Board configuration
+deactivate zephyr
+
+cmake -> fprime: Configure F' build
+activate fprime
+fprime -> fprime: Filter for Zephyr-compatible modules
+fprime --> cmake: F' configuration
+deactivate fprime
+
+cmake --> runsh: Build system prepared
+deactivate cmake
+
+== Generate Code from FPP ==
+runsh -> fpptools: Process FPP files
+activate fpptools
+note right
+  • Parse component definitions
+  • Generate C++ implementation files
+  • Create component dictionaries
+  • Build component topology
+end note
+fpptools --> runsh: Generated C++ code
+deactivate fpptools
+
+== Compile Application ==
+runsh -> compiler: Build application
+activate compiler
+compiler -> compiler: Build F' components
+compiler -> compiler: Build Zephyr OS adaptation layer
+compiler -> compiler: Build user components
+compiler -> compiler: Build Zephyr kernel & drivers
+
+compiler -> compiler: Link final application
+
+compiler --> runsh: Final binaries
+deactivate compiler
+
+runsh --> dev: Build complete (with memory report)
+deactivate runsh
+
+@enduml
+#+end_src
+
+
+#+RESULTS:
+[[file:.assets/build_deployment_sd.png]]

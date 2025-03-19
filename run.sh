@@ -51,8 +51,6 @@ find_board_port() {
     echo "$port"
 }
 
-BRANCH_NAME=$(git rev-parse --abbrev-ref HEAD)
-
 show_help() {
   cat <<EOF
 Usage: $(basename "$0") [OPTIONS] COMMAND [ARGS]
@@ -68,12 +66,11 @@ Options:
   --help                             Display this help message.
 
 Commands:
-  pull                               Retrieve the latest source code and docker image using ${BRANCH_NAME}.
-  push                               Update remote servers with the local code and dockerfile ${BRANCH_NAME}.
+  pull                               Retrieve the latest source code and docker image for this branch ($(git rev-parse --abbrev-ref HEAD)).
   build <target>                     Builds a target component, specified by the second argument.
                                      Note the following example build targets:
-                                     fsw           Build the Flight Software application
-                                     docker        Build the Docker image
+                                     BaseDeployment Build the F' BaseDeployment application
+                                     docker         Build the Docker image
 
   exec <target>                      Executes a target inside the container specified by the second argument.
                                      Note the following example build targets:
@@ -471,6 +468,9 @@ build_docker() {
     # Get the requirements for our submodules
     # NOTE this could probably be expanded to retrieve more file types and loop on submodules
     retrieve_requirements "deps/fprime" "requirements.txt" "$temp_dir"
+    # NOTE this could be used to retrieve zephyr's requirements however this was deprecated with
+    # since zephyr v4.1+ supports the west packages pip --install command which is a more robust way
+    # of achieving the same thing
     # retrieve_requirements "deps/zephyr" "scripts/requirements.txt" "$temp_dir"
 
     # Clean up temporary directory
@@ -480,7 +480,7 @@ build_docker() {
 
     build_cmd+=" --build-arg FSW_WDIR=${ZEPHYR_WDIR} --build-arg HOST_UID=$HOST_UID --build-arg HOST_GID=$HOST_GID"
     build_cmd+=" --build-arg REQUIREMENTS_FILE=${requirements_file}"
-    build_cmd+="; rm -rf ${requirements_file}"
+    build_cmd+="; rm -rf ${temp_dir}; rm -rf ${requirements_file}"
     exec_cmd "$build_cmd"
 }
 
@@ -497,16 +497,14 @@ container_to_host_paths() {
 }
 
 build_zephyr_st() {
-    flags="-w $ZEPHYR_WDIR/bare-zephyr-ref $DEFAULT_FLAGS"
+    flags="-w $ZEPHYR_WDIR/bare-zephyr-app $DEFAULT_FLAGS"
 
-    cmd="west build -b sam_v71_xult/samv71q21b -d $ZEPHYR_WDIR/bare-zephyr-ref/build"
-    [ "$CLEAN" -eq 1 ] && cmd+="--pristine"
-
-    cmd+="${ZEPHYR_WDIR}/${zephyr_path}"
+    cmd="west build -b sam_v71_xult/samv71q21b -d $ZEPHYR_WDIR/bare-zephyr-app/build"
+    [ "$CLEAN" -eq 1 ] && cmd+=" --pristine "
 
     try_docker_exec "zephyr" "bash -c \"$cmd\"" "$flags"
 
-    container_to_host_paths "${ZEPHYR_WDIR}" "${SCRIPT_DIR}" "${SCRIPT_DIR}/bare-zephyr-ref/build"
+    container_to_host_paths "${ZEPHYR_WDIR}" "${SCRIPT_DIR}" "${SCRIPT_DIR}/bare-zephyr-app/build"
 }
 
 # Used as a reference for sticky build issues
@@ -537,6 +535,17 @@ build_ledblinker_west() {
 }
 
 case $1 in
+  "pull")
+    update_cmd="git pull"
+    [ "$FORCE" -eq 1 ] && update_cmd="git fetch -a && git reset --hard origin/$(git rev-parse --abbrev-ref HEAD)"
+    update_cmd+=" && git submodule sync && git submodule update --init --recursive"
+    update_cmd+=" && docker ${ZEPHYR_IMG}"
+
+    exec_cmd "$update_cmd"
+
+    try_docker_exec "$DEFAULT_SVC" "west update -n --stats" "-w $ZEPHYR_WDIR $DEFAULT_FLAGS"
+    ;;
+
   "build")
     EXEC_TARGET=${2:-}
     [ -z "$EXEC_TARGET" ] && { echo "Error: must specify target to exec"; exit 1; }
