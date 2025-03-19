@@ -71,7 +71,7 @@ ENV PATH=$PATH:/home/user/zephyr-sdk-0.17.0/arm-zephyr-eabi/bin
 # Its unclear whether theres much advantage to be had to include the workspace
 # in the image
 COPY .west ${FSW_WDIR}/.west
-COPY west.yml ${FSW_WDIR}/west.yml
+COPY ./BaseDeployment/west.yml ${FSW_WDIR}/BaseDeployment/west.yml
 
 # NOTE for zephyr deps, the latest branch supports this instead of a requirements.txt file
 RUN pip install west && west update -n && west packages pip --install
