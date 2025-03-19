@@ -155,7 +155,7 @@ Rel_U(zephyrInterface, zephyrFprimeToolChain, "Provides", "Driver APIs")
 #+end_src
 
 #+RESULTS:
-[[file:.assets/project_overview.png]]
+[[file:.assets/project_build_cd.png]]
 
 
 The architecture consists of several key layers:
