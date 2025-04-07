@@ -1,4 +1,4 @@
-name: CI
+name: F Prime Zephyr CI
 on:
   push:
     branches: [ '*' ]
@@ -6,57 +6,124 @@ on:
     branches: [ '*' ]
   workflow_dispatch:
     inputs:
-      build_docker:
-        description: 'Force Docker build'
+      force_docker_build:
+        description: 'Force rebuild of Docker image'
         required: false
-        default: 'false'
+        default: false
         type: boolean
 
 env:
   ZEPHYR_IMG: ghcr.io/reggiemarr/fprime-zephyr-reference
 
 jobs:
-  check-docker-changes:
+  prepare-build:
     runs-on: ubuntu-latest
     outputs:
-      docker_changed: ${{ steps.check_files.outputs.docker_changed }}
+      fsw_changed: ${{ steps.check_changes.outputs.fsw_changed }}
+      docker_changed: ${{ steps.check_changes.outputs.docker_changed }}
+      fsw_img_tag: ${{ steps.set_tags.outputs.fsw_img_tag }}
+      fsw_img: ${{ steps.set_tags.outputs.fsw_img }}
+      build_docker: ${{ steps.check_image.outputs.build_docker }}
     steps:
       - uses: actions/checkout@v2
         with:
           fetch-depth: 0
 
-      - name: Check if Docker-related files changed
-        id: check_files
+      - name: Check code changes
+        id: check_changes
         run: |
-          # Only run git diff if not manually triggered
-          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
-            echo "Manual trigger detected"
-            echo "docker_changed=${{ github.event.inputs.build_docker }}" >> $GITHUB_OUTPUT
+          # Determine which files changed
+          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            CHANGED_FILES=$(git diff --name-only ${{ github.event.pull_request.base.sha }} ${{ github.sha }})
+          elif [[ "${{ github.event_name }}" == "push" ]]; then
+            git fetch origin ${{ github.event.before }}
+            CHANGED_FILES=$(git diff --name-only ${{ github.event.before }} ${{ github.sha }})
           else
-            # For push/pull_request events
-            if [[ "${{ github.event_name }}" == "pull_request" ]]; then
-              CHANGED_FILES=$(git diff --name-only ${{ github.event.pull_request.base.sha }} ${{ github.sha }})
-            else
-              # Push event
-              git fetch origin ${{ github.event.before }}
-              CHANGED_FILES=$(git diff --name-only ${{ github.event.before }} ${{ github.sha }})
-            fi
+            # For workflow_dispatch, assume FSW files changed
+            CHANGED_FILES="BaseDeployment/"
+          fi
 
-            if echo "$CHANGED_FILES" | grep -q -E "Dockerfile|.env|docker-compose.yml|.github/workflows"; then
-              echo "Docker-related files changed"
-              echo "docker_changed=true" >> $GITHUB_OUTPUT
+          # Check if FSW files changed
+          if echo "$CHANGED_FILES" | grep -q -E "BaseDeployment/|Components/|config/|.prj|CMakeLists.txt"; then
+            echo "FSW files changed"
+            echo "fsw_changed=true" >> $GITHUB_OUTPUT
+          else
+            echo "No FSW files changed"
+            echo "fsw_changed=false" >> $GITHUB_OUTPUT
+          fi
+
+          # Check if Docker-related files changed
+          if echo "$CHANGED_FILES" | grep -q -E "Dockerfile|.env|docker-compose.yml|.github/workflows"; then
+            echo "Docker-related files changed"
+            echo "docker_changed=true" >> $GITHUB_OUTPUT
+          else
+            echo "No Docker-related files changed"
+            echo "docker_changed=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Set image tags
+        id: set_tags
+        run: |
+          # Create consistent image tag from branch name
+          BRANCH_NAME=${GITHUB_REF#refs/heads/}
+          BRANCH_NAME=${BRANCH_NAME//\//_}
+          FSW_IMG_TAG="fsw_${BRANCH_NAME}"
+          FSW_IMG="${{ env.ZEPHYR_IMG }}:${FSW_IMG_TAG}"
+
+          echo "fsw_img_tag=${FSW_IMG_TAG}" >> $GITHUB_OUTPUT
+          echo "fsw_img=${FSW_IMG}" >> $GITHUB_OUTPUT
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Check if Docker image exists
+        id: check_image
+        run: |
+          FSW_IMG="${{ steps.set_tags.outputs.fsw_img }}"
+
+          # Determine if we need to build Docker
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            # For manual triggers, only build if forced or image doesn't exist
+            if [[ "${{ github.event.inputs.force_docker_build }}" == "true" ]]; then
+              echo "Manual trigger with forced Docker build"
+              echo "build_docker=true" >> $GITHUB_OUTPUT
             else
-              echo "No Docker-related files changed"
-              echo "docker_changed=false" >> $GITHUB_OUTPUT
+              # Check if image exists
+              if docker pull ${FSW_IMG} 2>/dev/null; then
+                echo "Docker image ${FSW_IMG} exists, skipping build"
+                echo "build_docker=false" >> $GITHUB_OUTPUT
+              else
+                echo "Docker image ${FSW_IMG} doesn't exist, building"
+                echo "build_docker=true" >> $GITHUB_OUTPUT
+              fi
+            fi
+          else
+            # For automated builds, build Docker if Docker files changed
+            if [[ "${{ steps.check_changes.outputs.docker_changed }}" == "true" ]]; then
+              echo "Docker files changed, rebuilding image"
+              echo "build_docker=true" >> $GITHUB_OUTPUT
+            else
+              # Check if image exists
+              if docker pull ${FSW_IMG} 2>/dev/null; then
+                echo "Docker image ${FSW_IMG} exists, skipping build"
+                echo "build_docker=false" >> $GITHUB_OUTPUT
+              else
+                echo "Docker image ${FSW_IMG} doesn't exist, building"
+                echo "build_docker=true" >> $GITHUB_OUTPUT
+              fi
             fi
           fi
 
   build-docker:
+    needs: prepare-build
+    if: needs.prepare-build.outputs.build_docker == 'true'
     permissions:
       contents: read
       packages: write
-    needs: check-docker-changes
-    if: needs.check-docker-changes.outputs.docker_changed == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v2
@@ -71,19 +138,19 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build and push Docker image
-        id: build_push
         env:
-          ZEPHYR_IMG: ${{ env.ZEPHYR_IMG }}
+          FSW_IMG: ${{ needs.prepare-build.outputs.fsw_img }}
         run: |
-          FSW_IMG_TAG=fsw_$(echo ${GITHUB_REF#refs/heads/} | sed 's|/|_|g')
-          FSW_IMG=${{ env.ZEPHYR_IMG }}:$FSW_IMG_TAG
-          echo "Building and pushing $FSW_IMG"
-          ./run.sh build docker --clean --local
-          docker push $FSW_IMG
-          echo "fsw_img_tag=$FSW_IMG_TAG" >> $GITHUB_OUTPUT
+          echo "Building and pushing ${FSW_IMG}"
+          ./run.sh build docker --clean
+          docker push ${FSW_IMG}
 
   build-fsw:
-    needs: [check-docker-changes]
+    needs: [prepare-build, build-docker]
+    if: |
+      always() &&
+      (needs.prepare-build.outputs.fsw_changed == 'true' || github.event_name == 'workflow_dispatch') &&
+      !(needs.build-docker.result == 'failure')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v2
@@ -97,25 +164,16 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Set Docker tag
-        run: |
-          FSW_IMG_TAG=fsw_$(echo ${GITHUB_REF#refs/heads/} | sed 's|/|_|g')
-          echo "FSW_IMG_TAG=$FSW_IMG_TAG" >> $GITHUB_ENV
-          echo "FSW_IMG=${{ env.ZEPHYR_IMG }}:$FSW_IMG_TAG" >> $GITHUB_ENV
-
-      - name: Wait for Docker build if needed
-        if: needs.check-docker-changes.outputs.docker_changed == 'true'
-        run: |
-          echo "Waiting for the Docker build to complete..."
-          # Add a short delay to allow the registry to update
-          sleep 30
-
       - name: Pull Docker image
-        run: docker pull ${{ env.FSW_IMG }}
+        env:
+          FSW_IMG: ${{ needs.prepare-build.outputs.fsw_img }}
+        run: docker pull ${FSW_IMG}
 
-      - name: Build and run FSW
+      - name: Build FSW
+        env:
+          FSW_IMG: ${{ needs.prepare-build.outputs.fsw_img }}
         run: |
-          echo "Using image ${{ env.FSW_IMG }}"
+          echo "Using image ${FSW_IMG}"
           ./run.sh build --clean
 
       - name: Upload artifacts
