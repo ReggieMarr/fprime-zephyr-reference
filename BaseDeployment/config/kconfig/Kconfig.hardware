@@ -1,0 +1,67 @@
+menu "Hardware Peripherals"
+
+config SERIAL
+    bool "Serial Communications"
+    default y
+    select SERIAL
+    select UART_INTERRUPT_DRIVEN
+    select UART_CONSOLE
+    select UART_LINE_CTRL
+    help
+      Enable serial communications interfaces
+
+config GPIO
+    bool "GPIO Support"
+    default y
+    select GPIO
+    help
+      Enable general purpose I/O
+
+config PWM
+    bool "PWM Support"
+    default y
+    select PWM
+    help
+      Enable pulse width modulation
+
+config I2C
+    bool "I2C Support"
+    default y
+    select I2C
+    help
+      Enable I2C bus interfaces
+
+config SPI
+    bool "SPI Support"
+    default y
+    select SPI
+    help
+      Enable SPI bus interfaces
+
+config PINCTRL
+    bool "Pin Control"
+    default y
+    select PINCTRL
+    help
+      Enable pin controller for hardware IO configuration
+
+config FPU
+    bool "Floating Point Support"
+    default y
+    select FPU
+    select FPU_SHARING
+    help
+      Enable hardware floating point support
+
+config FILESYSTEM
+    bool "Filesystem Support"
+    default n
+    select FLASH
+    select FLASH_MAP
+    select FLASH_PAGE_LAYOUT
+    select FILE_SYSTEM
+    select FILE_SYSTEM_LITTLEFS
+    help
+      Enable filesystem support for data storage
+
+endmenu

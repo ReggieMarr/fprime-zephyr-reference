@@ -1,0 +1,48 @@
+menu "F' Configuration"
+
+config FPRIME_RUNTIME
+    bool "Enable F' Framework"
+    default y
+    select NEWLIB_LIBC
+    select REQUIRES_FULL_LIBCPP
+    help
+      Enables the F' flight software framework
+
+config FPRIME_HEAP_SIZE
+    int "F' heap size (bytes)"
+    default 128000
+    help
+      Size of heap memory pool available to F' components
+
+config FPRIME_HEAP_SIZE
+    int "F' heap size (bytes)"
+    default 128000
+    help
+      Size of heap memory pool available to F' components
+
+config FPRIME_MAIN_STACK
+    int "Main stack size (bytes)"
+    default 16384
+    help
+      Size of main thread stack for F' application
+
+config FPRIME_USB_CONSOLE
+    bool "Use USB for console"
+    default y
+    select USB_DEVICE_STACK
+    select USB_CDC_ACM
+    select USB_DEVICE_INITIALIZE_AT_BOOT
+    help
+      Enable USB CDC-ACM as the console interface
+
+if FPRIME_USB_CONSOLE
+    config FPRIME_USB_PRODUCT
+        string "USB Product Name"
+        default "SAM V71 F'"
+
+    config FPRIME_USB_MANUFACTURER
+        string "USB Manufacturer Name"
+        default "Atmel"
+endif
+
+endmenu

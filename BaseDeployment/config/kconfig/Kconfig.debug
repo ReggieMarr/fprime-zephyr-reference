@@ -1,0 +1,60 @@
+menu "Debugging & Logging"
+
+config FPRIME_ASSERT
+    bool "Enable assertions"
+    default y
+    select ASSERT
+    help
+      Enable runtime assertions for error detection
+
+config FPRIME_LOGGING
+    bool "Enable logging"
+    default y
+    select LOG
+    help
+      Enable system logging capabilities
+
+if FPRIME_LOGGING
+    choice FPRIME_LOG_LEVEL
+        prompt "Default Log Level"
+        default FPRIME_LOG_LEVEL_INFO
+
+        config FPRIME_LOG_LEVEL_ERR
+            bool "Error"
+
+        config FPRIME_LOG_LEVEL_WRN
+            bool "Warning"
+
+        config FPRIME_LOG_LEVEL_INFO
+            bool "Info"
+
+        config FPRIME_LOG_LEVEL_DBG
+            bool "Debug"
+    endchoice
+
+    config FPRIME_LOG_BUFFER_SIZE
+        int "Log buffer size"
+        default 512
+        help
+          Size of the logging buffer in bytes
+endif
+
+config FPRIME_STACK_PROTECTION
+    bool "Enable stack protection"
+    default y
+    select MPU_STACK_GUARD
+    help
+      Enable memory protection for stacks
+
+config FPRIME_RUNTIME_ANALYSIS
+    bool "Enable runtime analysis"
+    default n
+    select THREAD_RUNTIME_STATS if y
+    select THREAD_MONITOR if y
+    select THREAD_STACK_INFO if y
+    select STACK_USAGE if y
+    select THREAD_NAME if y
+    help
+      Enable runtime analysis features for debugging
+
+endmenu
