@@ -6,6 +6,11 @@ on:
     branches: [ '*' ]
   workflow_dispatch:
     inputs:
+      force_fsw_build:
+        description: 'Force rebuild of BaseDeployment App'
+        required: false
+        default: false
+        type: boolean
       force_docker_build:
         description: 'Force rebuild of Docker image'
         required: false
@@ -43,8 +48,10 @@ jobs:
             CHANGED_FILES="BaseDeployment/"
           fi
 
-          # Check if FSW files changed
-          if echo "$CHANGED_FILES" | grep -q -E "BaseDeployment/|Components/|config/|.prj|CMakeLists.txt"; then
+          # Check if FSW files have changed
+          areFilesChanged=$(echo "$CHANGED_FILES" | grep -q -E "BaseDeployment/|Components/|config/|.prj|CMakeLists.txt" && echo "true" || echo "false")
+
+          if [[ $areFilesChanged == "true" ]] || [[ "${{ github.event.inputs.force_fsw_build }}" == "true" ]]; then
             echo "FSW files changed"
             echo "fsw_changed=true" >> $GITHUB_OUTPUT
           else
@@ -85,36 +92,36 @@ jobs:
         run: |
           FSW_IMG="${{ steps.set_tags.outputs.fsw_img }}"
 
+          # Check if image exists
+          IMAGE_EXISTS=false
+          if docker pull ${FSW_IMG} 2>/dev/null; then
+            echo "Docker image ${FSW_IMG} exists"
+            IMAGE_EXISTS=true
+          else
+            echo "Docker image ${FSW_IMG} doesn't exist"
+          fi
+
           # Determine if we need to build Docker
           if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
-            # For manual triggers, only build if forced or image doesn't exist
+            # FSW with Docker mode
             if [[ "${{ github.event.inputs.force_docker_build }}" == "true" ]]; then
               echo "Manual trigger with forced Docker build"
               echo "build_docker=true" >> $GITHUB_OUTPUT
-            else
-              # Check if image exists
-              if docker pull ${FSW_IMG} 2>/dev/null; then
-                echo "Docker image ${FSW_IMG} exists, skipping build"
-                echo "build_docker=false" >> $GITHUB_OUTPUT
-              else
-                echo "Docker image ${FSW_IMG} doesn't exist, building"
-                echo "build_docker=true" >> $GITHUB_OUTPUT
-              fi
-            fi
-          else
-            # For automated builds, build Docker if Docker files changed
-            if [[ "${{ steps.check_changes.outputs.docker_changed }}" == "true" ]]; then
-              echo "Docker files changed, rebuilding image"
+            elif [[ "$IMAGE_EXISTS" == "false" ]]; then
+              echo "Docker image doesn't exist, building"
               echo "build_docker=true" >> $GITHUB_OUTPUT
             else
-              # Check if image exists
-              if docker pull ${FSW_IMG} 2>/dev/null; then
-                echo "Docker image ${FSW_IMG} exists, skipping build"
-                echo "build_docker=false" >> $GITHUB_OUTPUT
-              else
-                echo "Docker image ${FSW_IMG} doesn't exist, building"
-                echo "build_docker=true" >> $GITHUB_OUTPUT
-              fi
+              echo "Using existing Docker image (no force rebuild)"
+              echo "build_docker=false" >> $GITHUB_OUTPUT
+            fi
+          else
+            # For automated builds, build Docker if Docker files changed or image doesn't exist
+            if [[ "${{ steps.check_changes.outputs.docker_changed }}" == "true" || "$IMAGE_EXISTS" == "false" ]]; then
+              echo "Docker build needed for automated run"
+              echo "build_docker=true" >> $GITHUB_OUTPUT
+            else
+              echo "Using existing Docker image for automated run"
+              echo "build_docker=false" >> $GITHUB_OUTPUT
             fi
           fi
 
@@ -142,15 +149,15 @@ jobs:
           FSW_IMG: ${{ needs.prepare-build.outputs.fsw_img }}
         run: |
           echo "Building and pushing ${FSW_IMG}"
-          ./run.sh build docker --clean
+          ./run.sh build docker --clean --local
           docker push ${FSW_IMG}
 
   build-fsw:
     needs: [prepare-build, build-docker]
     if: |
       always() &&
-      (needs.prepare-build.outputs.fsw_changed == 'true' || github.event_name == 'workflow_dispatch') &&
-      !(needs.build-docker.result == 'failure')
+      (needs.prepare-build.outputs.build_docker == 'true' || needs.prepare-build.outputs.fsw_changed == 'true' || github.event_name == 'workflow_dispatch') &&
+      (needs.prepare-build.outputs.build_docker == 'false' || needs.build-docker.result == 'success')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v2
@@ -169,12 +176,17 @@ jobs:
           FSW_IMG: ${{ needs.prepare-build.outputs.fsw_img }}
         run: docker pull ${FSW_IMG}
 
+      - name: Prepare build directory
+        run: |
+          mkdir -p BaseDeployment/build
+          chmod -R 777 BaseDeployment/build
+
       - name: Build FSW
         env:
           FSW_IMG: ${{ needs.prepare-build.outputs.fsw_img }}
         run: |
           echo "Using image ${FSW_IMG}"
-          ./run.sh build --clean
+          ./run.sh pull && ./run.sh build BaseDeployment --clean
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4

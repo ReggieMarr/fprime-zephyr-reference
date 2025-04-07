@@ -5,9 +5,6 @@ source .env
 set -e
 set -o pipefail
 
-export HOST_GID=$(id -g $(id -g -n))
-export HOST_UID=$(id -u $(whoami))
-
 export ZEPHYR_IMG_BASE=${ZEPHYR_IMG_BASE:-$ZEPHYR_URL}
 export ZEPHYR_IMG_TAG=${ZEPHYR_IMG_TAG:-fsw_$(git rev-parse --abbrev-ref HEAD | sed 's/\//_/g')}
 export ZEPHYR_IMG="$ZEPHYR_IMG_BASE:$ZEPHYR_IMG_TAG"
@@ -17,7 +14,7 @@ DEFAULT_SVC="zephyr"
 # The base flags ensures that containers are run with the following:
 # deleted after use or exit, run the user with the id and gid of the host user
 # also remove dead containers from previous sessions (if for some reason they exist)
-BASE_FLAGS="--rm --user $(id -u):$(id -g) --remove-orphans"
+BASE_FLAGS="--rm --remove-orphans"
 
 check_port() {
     local port=$1
@@ -150,7 +147,7 @@ run_docker_compose() {
     local cmd="$2"
     # Always kill the container after executing the command
     # by default run the command with an interactive tty
-    local flags="$BASE_FLAGS $3"
+    local flags="$BASE_FLAGS $3 --user $(id -u):$(id -g)"
 
     if [ "${DAEMON}" -eq "1" ]; then
         flags="${flags//-it/}"   # Remove standalone "-it"
@@ -478,8 +475,9 @@ build_docker() {
 
     [ "$CLEAN" -eq 1 ] && build_cmd+=" --no-cache"
 
-    build_cmd+=" --build-arg FSW_WDIR=${ZEPHYR_WDIR} --build-arg HOST_UID=$HOST_UID --build-arg HOST_GID=$HOST_GID"
+    build_cmd+=" --build-arg FSW_WDIR=${ZEPHYR_WDIR}"
     build_cmd+=" --build-arg REQUIREMENTS_FILE=${requirements_file}"
+    build_cmd+=" --build-arg HOST_UID=$(id -u) --build-arg HOST_GID=$(id -g)"
     build_cmd+="; rm -rf ${temp_dir}; rm -rf ${requirements_file}"
     exec_cmd "$build_cmd"
 }
@@ -536,12 +534,12 @@ build_ledblinker_west() {
 
 case $1 in
   "pull")
-    update_cmd="git pull"
-    [ "$FORCE" -eq 1 ] && update_cmd="git fetch -a && git reset --hard origin/$(git rev-parse --abbrev-ref HEAD)"
-    update_cmd+=" && git submodule sync && git submodule update --init --recursive"
-    update_cmd+=" && docker ${ZEPHYR_IMG}"
+    # update_cmd="git pull"
+    # [ "$FORCE" -eq 1 ] && update_cmd="git fetch -a && git reset --hard origin/$(git rev-parse --abbrev-ref HEAD)"
+    # update_cmd+=" && git submodule sync && git submodule update --init --recursive"
+    # update_cmd+=" && docker ${ZEPHYR_IMG}"
 
-    exec_cmd "$update_cmd"
+    # exec_cmd "$update_cmd"
 
     try_docker_exec "$DEFAULT_SVC" "west update -n --stats" "-w $ZEPHYR_WDIR $DEFAULT_FLAGS"
     ;;
