@@ -14,13 +14,11 @@ RUN apt-get update && \
 FROM base AS user-setup
 
 # Create a non-root user for better security practices
-ARG HOST_UID=1000
-ARG HOST_GID=1000
 ARG FSW_WDIR=/fprime-zephyr-reference
 RUN userdel -r ubuntu || true && \
     getent group 1000 && getent group 1000 | cut -d: -f1 | xargs groupdel || true && \
-    groupadd -g ${HOST_GID} user && \
-    useradd -u ${HOST_UID} -g ${HOST_GID} -m user && \
+    groupadd -g 1000 user && \
+    useradd -u 1000 -g 1000 -m user && \
     echo 'user ALL=(ALL) NOPASSWD:ALL' >> /etc/sudoers
 
 # USB and permissions setup
