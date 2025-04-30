@@ -3,12 +3,15 @@
 # components and deployments from project.cmake. In addition, it imports the core F Prime components.
 ####
 
-cmake_minimum_required(VERSION 3.13)
+cmake_minimum_required(VERSION 3.15)
 cmake_policy(SET CMP0048 NEW)
 
-find_package(Zephyr REQUIRED HINTS $ENV{ZEPHYR_BASE})
+project(fprime-zephyr-reference VERSION 1.0.0)
+set(CMAKE_BUILD_TYPE Debug)
 
-project(fprime-zephyr-reference C CXX)
+enable_language(CXX)
+
+find_package(Zephyr REQUIRED HINTS $ENV{ZEPHYR_BASE})
 
 # Get the absolute path of the root of the project
 get_filename_component(PROJECT_ROOT "${CMAKE_PROJECT_DIR}../" ABSOLUTE)
@@ -29,9 +32,23 @@ set(FPRIME_SUB_BUILD_TARGETS
     autocoder/packets
     target/version
     target/sbom
+    target/install
+    target/ut
+    target/check
 )
 
 fprime_setup_included_code()
+
+# Since we define sub_build_targets this doesn't get added
+if (BUILD_TESTING)
+    if (NOT EXISTS "${FPRIME_FRAMEWORK_PATH}/googletest/CMakeLists.txt")
+        message(FATAL_ERROR "googletest submodule not initialized or corrupted. Please run `git submodule update --init --recursive`.")
+    endif()
+    add_subdirectory("${FPRIME_FRAMEWORK_PATH}/googletest/" "${CMAKE_BINARY_DIR}/F-Prime/googletest")
+    target_compile_options("${PROJECT_NAME}" PUBLIC -Werror=format-security)
+    set(CMAKE_CXX_STANDARD 14)
+    set(CMAKE_CXX_STANDARD_REQUIRED ON)
+endif()
 
 add_fprime_subdirectory("${PROJECT_ROOT}/Components")
 
