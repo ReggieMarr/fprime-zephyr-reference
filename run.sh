@@ -76,6 +76,7 @@ Commands:
   deploy                             Deploy a target to some execution environment.
                                      fsw                  Deploy the Flight Software application
                                      gds                  Deploy the Ground Data System (GDS)
+  impl                               [component path]     Pass the path to the component to implement (use --ut to generate unit test harness)
 
   inspect                Opens an interactive shell (bash) inside the default service container.
 
@@ -494,6 +495,23 @@ container_to_host_paths() {
   exec_cmd "$mod_dict_cmd"
 }
 
+exec_impl() {
+  # The path to the component which we want to generate implemenation files for
+  # NOTE that this requires a valid build cache is generated and that the Components/CMakeLists.txt
+  # includes the desired component
+  component_path="$1"
+  ut_flag="$2"
+  flags="-w $ZEPHYR_WDIR $DEFAULT_FLAGS"
+  # NOTE in most F' projects this will be called something like build-fprime-automatic-native
+  # but since we build direct with cmake it's just called "build"
+  generated_build_dir="${ZEPHYR_WDIR}/BaseDeployment/build/"
+  project_root="${ZEPHYR_WDIR}/BaseDeployment/"
+
+  cmd="fprime-util impl --build-cache $generated_build_dir -r $project_root -p ${component_path} ${ut_flag}"
+
+  try_docker_exec "zephyr" "bash -c \"$cmd\"" "$flags"
+}
+
 build_zephyr_st() {
     flags="-w $ZEPHYR_WDIR/bare-zephyr-app $DEFAULT_FLAGS"
 
@@ -542,6 +560,13 @@ case $1 in
     # exec_cmd "$update_cmd"
 
     try_docker_exec "$DEFAULT_SVC" "west update -n --stats" "-w $ZEPHYR_WDIR $DEFAULT_FLAGS"
+    ;;
+
+  "impl")
+    IMPL_TARGET=${2:-}
+    [ -z "$IMPL_TARGET" ] && { echo "Error: must specify target to impl"; exit 1; }
+
+    exec_impl "$IMPL_TARGET" "$3"
     ;;
 
   "build")
