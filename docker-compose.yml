@@ -7,6 +7,7 @@ services:
       dockerfile: Dockerfile
     working_dir: $ZEPHYR_WDIR
     environment:
+      - FPRIME_FRAMEWORK_PATH=/fprime-zephyr-reference/deps/fprime
       - TERM=xterm-256color
       - FORCE_COLOR=1
       - CMAKE_COLOR_DIAGNOSTICS=ON
