@@ -286,7 +286,7 @@ retrieve_remote_requirements() {
 
     # Extract the repo owner and name from the remote URL
     local github_baseurl="github.com"
-    local fsw_project_path=$(git remote get-url origin | sed -nE "s/^.*${github_baseurl}[:/](.*)(\.git)?$/\1/p")
+    local fsw_project_path=$(git remote get-url origin | sed -nE "s/^.*${github_baseurl}[:/]([^\.]*)(\.git)?$/\1/p")
 
     # Get the .gitmodules content - add -L flag to follow redirects
     local submodule_url="https://api.github.com/repos/${fsw_project_path}/contents/.gitmodules?ref=${fsw_repo_commit}"
